@@ -48,6 +48,7 @@ def ring_resonator(
     core_layer="WG",
     sleeve_layer="DEEP_ETCH",
     x_span=100,
+    bend="bend_euler",
 ):
     c = gf.Component()
     ring_single = gf.components.ring_single(
@@ -56,6 +57,7 @@ def ring_resonator(
         radius=radius,
         length_y=length_y,
         length_x=length_x,
+        bend=bend,
     )
     c << ring_single
     straight1 = c << waveguide_inv_extrude(
@@ -84,6 +86,20 @@ def ring_resonator(
     )
     c.add_port(name="o1", port=straight1.ports["o1"])
     c.add_port(name="o2", port=straight2.ports["o2"])
+    # add a structure port at the middle of the ring top
+    ring_top_pos = (
+        -length_x / 2,
+        radius * 2 + length_y + cross_section.width * 3 / 2 + gap,
+    )
+    c.add_port(
+        name="p1",
+        center=ring_top_pos,
+        width=1,
+        orientation=90,
+        layer=core_layer,
+        port_type="placement",
+    )
+
     c2 = gf.Component()
     c2 << c.extract([(1, 0)])
     c2 << new_sleeve
