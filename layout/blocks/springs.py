@@ -1,5 +1,5 @@
 import gdsfactory as gf
-from blocks import truss
+from blocks import truss, create_deep_etch_mask
 
 
 @gf.cell
@@ -51,7 +51,13 @@ def spring_with_truss(anchor_size=5, spring_length=20, spring_width=0.15):
 
 
 @gf.cell
-def spring_pair(anchor_size=5, spring_length=20, spring_width=0.15):
+def spring_pair(
+    anchor_size=5,
+    spring_length=20,
+    spring_width=0.15,
+    mask_offset=1,
+    if_create_mask=True,
+):
     c = gf.Component()
     down_spring = c << spring_with_truss(anchor_size, spring_length, spring_width)
     up_spring = c << spring_with_truss(anchor_size, spring_length, spring_width)
@@ -67,5 +73,14 @@ def spring_pair(anchor_size=5, spring_length=20, spring_width=0.15):
         layer="WG",
         orientation=0,
     )
+
+    import warnings
+
+    if if_create_mask:
+        create_deep_etch_mask(c, method="bbox", mask_offset=mask_offset)
+    else:
+        warnings.warn(
+            "Parameter 'mask_offset' is not in use because 'if_create_mask' is False."
+        )
 
     return c
