@@ -60,7 +60,7 @@ def spring_pair(anchor_size=5, spring_length=20, spring_width=0.15):
     truss_connection.movex(-4.5)
 
     c.add_port(
-        name="p1",
+        name="e1",
         center=(-3.5, 7),
         width=1,
         port_type="placement",
