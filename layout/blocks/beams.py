@@ -1,5 +1,5 @@
 import gdsfactory as gf
-from .utils import create_deep_etch_mask
+from .utils import create_deep_etch_mask, merge_deep_etch_mask
 
 
 def cantilever_beam(length, width, mask_offset=1):
@@ -83,6 +83,18 @@ def doubly_clamped_beam(
 
     create_deep_etch_mask(c, mask_offset=mask_offset, x_off=False)
 
+    return c
+
+
+@gf.cell
+def doubly_clamped_beam_with_spring(beam_spec, spring_spec):
+    c = gf.Component()
+    beam = c << beam_spec()
+    spring = c << spring_spec()
+    spring.connect("e1", beam.ports["w1"], allow_width_mismatch=True)
+
+    c.ports = beam.ports
+    merge_deep_etch_mask(c)
     return c
 
 
