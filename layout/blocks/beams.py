@@ -41,7 +41,7 @@ def cantilever_beam(length, width, mask_offset=1):
     c.flatten()
     c.show()
     c.add_port(
-        name="p1",
+        name="s1",
         center=(-length / 2, 0),
         orientation=-90,
         width=1,
@@ -78,11 +78,11 @@ def doubly_clamped_beam(
     )
     clamp_right.connect("o1", beam.ports["e3"])
     c.add_ports([clamp_left.ports["o2"], clamp_right.ports["o2"]])
-    c.ports[0].name = "p1"
-    c.ports[1].name = "p2"
+    c.ports[0].name = "w1"
+    c.ports[1].name = "e1"
 
     c.add_port(
-        "m1",
+        "s1",
         center=(length / 2, 0),
         orientation=-90,
         width=1,
