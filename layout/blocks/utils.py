@@ -28,6 +28,14 @@ def create_deep_etch_mask(
 
 
 def merge_deep_etch_mask(c) -> None:
+    return None
+    booled_deepetch = gf.boolean(c, c, "not", "DEEP_ETCH", "DEEP_ETCH", "WG")
+    c.remove_layers(["DEEP_ETCH"])
+    c << booled_deepetch
+
+
+def tmp_merge_deep_etch_mask(c) -> None:
+    """Temporary function to merge deep etch mask."""
     booled_deepetch = gf.boolean(c, c, "not", "DEEP_ETCH", "DEEP_ETCH", "WG")
     c.remove_layers(["DEEP_ETCH"])
     c << booled_deepetch
