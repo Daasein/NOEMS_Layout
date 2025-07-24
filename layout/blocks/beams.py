@@ -31,7 +31,7 @@ def cantilever_beam(length, width, mask_offset=1):
     c.show()
     c.add_port(
         name="s1",
-        center=(-length / 2, 0),
+        center=(-length, 0),
         orientation=-90,
         width=1,
         layer="WG",
