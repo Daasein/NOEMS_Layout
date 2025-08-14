@@ -327,4 +327,41 @@ def truss(width, size, mxn: tuple[int, int]):
             unit = c << _truss_single(width, size)
             unit.connect("S", last.ports["N"])
             last = unit
+
+    height = size * nrows
+    width = size * ncols
+
+    c.add_port(
+        name="W1",
+        center=(0, height / 2),
+        width=1,
+        orientation=180,
+        layer="WG",
+        port_type="placement",
+    )
+    c.add_port(
+        name="E1",
+        center=(width, height / 2),
+        width=1,
+        orientation=0,
+        layer="WG",
+        port_type="placement",
+    )
+    c.add_port(
+        name="S1",
+        center=(width / 2, 0),
+        width=1,
+        orientation=270,
+        layer="WG",
+        port_type="placement",
+    )
+    c.add_port(
+        name="N1",
+        center=(width / 2, height),
+        width=1,
+        orientation=90,
+        layer="WG",
+        port_type="placement",
+    )
+
     return c

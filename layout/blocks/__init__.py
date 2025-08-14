@@ -7,3 +7,4 @@ from .resonators import *
 from .truss import *
 from .springs import *
 from .utils import *
+from .actuation import *

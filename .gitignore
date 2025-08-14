@@ -17,7 +17,7 @@ venv/
 # IDE files
 .vscode/
 .idea/
-
+.conda/
 # Logs
 *.log
 

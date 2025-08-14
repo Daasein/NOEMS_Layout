@@ -73,6 +73,14 @@ def spring_pair(
         layer="WG",
         orientation=0,
     )
+    c.add_port(
+        name="w1",
+        center=(-4.5, 7),
+        width=1,
+        port_type="placement",
+        layer="WG",
+        orientation=180,
+    )
 
     import warnings
 
