@@ -5,23 +5,23 @@ from .spacer import vertical_spacer
 from .beams import cantilever_beam
 from .mylib import ring_resonator
 from .cross_section import cross_section_with_sleeves
+from .utils import merge_deep_etch_mask
 
 
 @gf.cell
-def resonator_with_beam(resonator_spec, cantilever_spec, gap=0.1):
+def resonator_with_beam(resonator_spec, beam_spec, gap=0.1):
     c = gf.Component()
     resonator = c << resonator_spec()
-    beam = c << cantilever_spec()
+    beam = c << beam_spec()
     spacer = c << vertical_spacer(gap)
 
     spacer.connect("p1", resonator.ports["p1"])
-    beam.connect("p1", spacer.ports["p2"])
+    beam.connect("s1", spacer.ports["p2"])
 
-    c.ports = resonator.ports
+    c.add_ports(beam.ports)
+    c.add_ports(resonator.ports)
+    merge_deep_etch_mask(c)
 
-    booled_deepetch = gf.boolean(c, c, "not", "DEEP_ETCH", "DEEP_ETCH", "WG")
-    c.remove_layers(["DEEP_ETCH"])
-    c << booled_deepetch
     return c
 
 

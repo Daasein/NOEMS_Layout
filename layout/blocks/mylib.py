@@ -310,9 +310,13 @@ def big_mark_set(seperation=1500):
     mark3 = c << global_alignment_mark
     mark1.dmove((0, seperation))
     mark3.dmove((0, -seperation))
-    (c << text_outline("1", size=100, layer=(7, 0))).dmove((400, -seperation + 500))
-    (c << text_outline("2", size=100, layer=(7, 0))).dmove((400, 500))
-    (c << text_outline("3", size=100, layer=(7, 0))).dmove((400, seperation + 500))
+    (c << text_outline("1", size=100, layer=(7, 0), with_mask=False)).dmove(
+        (400, -seperation + 500)
+    )
+    (c << text_outline("2", size=100, layer=(7, 0), with_mask=False)).dmove((400, 500))
+    (c << text_outline("3", size=100, layer=(7, 0), with_mask=False)).dmove(
+        (400, seperation + 500)
+    )
     return c
 
 
