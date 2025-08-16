@@ -158,7 +158,8 @@ def doubly_clamped_beam_with_round_support(
 
     if create_mask:
         create_deep_etch_mask(c, mask_offset=mask_offset)
-    return c.rotate(90)
+    c.rotate(90)
+    return c
 
 
 if __name__ == "__main__":
