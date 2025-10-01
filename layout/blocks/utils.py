@@ -34,8 +34,13 @@ def merge_deep_etch_mask(c) -> None:
     c << booled_deepetch
 
 
-def tmp_merge_deep_etch_mask(c) -> None:
+def tmp_merge_deep_etch_mask(c) -> gf.Component:
     """Temporary function to merge deep etch mask."""
+    new_c = gf.Component()
     booled_deepetch = gf.boolean(c, c, "not", "DEEP_ETCH", "DEEP_ETCH", "WG")
-    c.remove_layers(["DEEP_ETCH"])
-    c << booled_deepetch
+    new_c << booled_deepetch
+    new_c << c.extract(["WG"])
+    return new_c
+
+    # c.remove_layers(["DEEP_ETCH"])
+    # c << booled_deepetch
