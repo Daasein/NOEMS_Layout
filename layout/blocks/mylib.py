@@ -41,15 +41,13 @@ def waveguide_inv_extrude(
 def ring_resonator(
     gap,
     radius,
-    length_y,
     length_x,
+    length_y,
     cross_section,
-    total_width=4,
-    core_layer="WG",
-    sleeve_layer="DEEP_ETCH",
-    x_span=100,
+    x_span=20,
     bend="bend_euler",
 ):
+    core_layer = cross_section.layer
     c = gf.Component()
     ring_single = gf.components.ring_single(
         cross_section=cross_section,
@@ -58,39 +56,15 @@ def ring_resonator(
         length_y=length_y,
         length_x=length_x,
         bend=bend,
+        length_extension=x_span / 2 - length_x / 2,
     )
-    c << ring_single
-    straight1 = c << waveguide_inv_extrude(
-        width=cross_section.width,
-        length=x_span / 2,
-        total_width=total_width,
-        core_layer=core_layer,
-        sleeve_layer=sleeve_layer,
-    )
-    straight2 = c << waveguide_inv_extrude(
-        width=cross_section.width,
-        length=x_span / 2,
-        total_width=total_width,
-        core_layer=core_layer,
-        sleeve_layer=sleeve_layer,
-    )
-    straight1.connect(port="o2", other=ring_single.ports["o1"])
-    straight2.connect(port="o1", other=ring_single.ports["o2"])
-    new_sleeve = gf.boolean(
-        c,
-        c,
-        layer1=sleeve_layer,
-        layer2=core_layer,
-        operation="not",
-        layer=sleeve_layer,
-    )
-    c.add_port(name="o1", port=straight1.ports["o1"])
-    c.add_port(name="o2", port=straight2.ports["o2"])
-    # add a structure port at the middle of the ring top
+
     ring_top_pos = (
         -length_x / 2,
         radius * 2 + length_y + cross_section.width * 3 / 2 + gap,
     )
+    c << ring_single
+    c.ports = ring_single.ports
     c.add_port(
         name="p1",
         center=ring_top_pos,
@@ -100,11 +74,27 @@ def ring_resonator(
         port_type="placement",
     )
 
-    c2 = gf.Component()
-    c2 << c.extract([(1, 0)])
-    c2 << new_sleeve
-    c2.add_ports(c.ports)
-    return c2
+    with_sleeve = False
+    section_names = set([section.name for section in cross_section.sections])
+    if "sleeve" in section_names:
+        with_sleeve = True
+
+    if with_sleeve:
+
+        section_layers = set([section.layer for section in cross_section.sections])
+        section_layers.remove(core_layer)
+        sleeve_layer = list(section_layers)[0]
+        c2 = gf.Component()
+        c2 << gf.boolean(
+            c, c, "or", layer=core_layer, layer1=core_layer, layer2=core_layer
+        )
+        c2 << gf.boolean(
+            c, c, "not", layer=sleeve_layer, layer1=sleeve_layer, layer2=core_layer
+        )
+        c2.ports = c.ports
+        return c2
+    else:
+        return c
 
 
 @gf.cell
