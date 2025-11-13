@@ -47,7 +47,7 @@ def _truss_quater_open(width, size):
     c = gf.Component()
     fill = c << _truss_quater_fill(width, size)
     # c2 = gf.Component()
-    circle = c << gf.components.circle(radius=width, layer=(1, 0))
+    circle = c << gf.components.circle(radius=width*0.7, layer=(1, 0))
 
     c3 = gf.Component()
     c3 << gf.boolean(fill, circle, operation="not", layer=(1, 0))

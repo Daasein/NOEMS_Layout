@@ -165,7 +165,7 @@ def doubly_clamped_beam_with_round_support(
     )
 
     if create_mask:
-        create_deep_etch_mask(c, mask_offset=mask_offset, y_off=False)
+        create_deep_etch_mask(c, method="bbox", mask_offset=mask_offset, y_off=False)
     c.rotate(90)
     return c
 
