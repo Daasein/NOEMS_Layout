@@ -19,7 +19,7 @@ def _truss_quater_fill(width, size):
     r3.add_polygon(points=points, layer=(1, 0))
     c << gf.boolean(bool1, r3, operation="or", layer=(1, 0))
     c2 = gf.Component()
-    circle2 = c2 << gf.components.circle(radius=width / 2, layer=(2, 0))
+    circle2 = c2 << gf.components.circle(radius=width / 3, layer=(2, 0))
     circle2.dmove((size, size))
     c3 = gf.Component()
     c3 << gf.boolean(c, c2, layer1=(1, 0), layer2=(2, 0), operation="not", layer=(1, 0))

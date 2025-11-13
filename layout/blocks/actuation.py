@@ -1,6 +1,7 @@
 from itertools import chain
 from math import ceil, floor
 import gdsfactory as gf
+from .utils import create_deep_etch_mask
 
 
 @gf.cell
@@ -12,6 +13,8 @@ def combdrive_fingers(
     base_thickness: float | int = 3.0,
     a_c: float | int = 3.0,
     layer="WG",
+    mask_offset=1,
+    with_mask: bool = False,
 ):
     c = gf.Component()
 
@@ -92,4 +95,7 @@ def combdrive_fingers(
         layer=layer,
         port_type="placement",
     )
+    
+    create_deep_etch_mask(c,method='bbox',mask_offset=mask_offset,x_off=False)
+    
     return c

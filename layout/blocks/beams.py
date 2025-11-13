@@ -94,7 +94,10 @@ def doubly_clamped_beam_with_spring(beam_spec, spring_spec):
     spring = c << spring_spec()
     spring.connect("e1", beam.ports["w1"], allow_width_mismatch=True)
 
-    c.ports = beam.ports
+    for port in beam.ports:
+        if not port.orientation == 180:
+            c.add_ports([port])
+    c.add_ports(spring.ports.filter(orientation=180))
     merge_deep_etch_mask(c)
     return c
 
