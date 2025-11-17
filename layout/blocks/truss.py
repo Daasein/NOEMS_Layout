@@ -1,4 +1,5 @@
 import gdsfactory as gf
+from typing import Literal
 
 
 @gf.cell
@@ -290,23 +291,54 @@ def _truss_core(width, size, mxn: tuple[int, int]):
         row_pitch=size,
         column_pitch=size,
     )
+    c.add_port(
+        name="slot1",
+        center=[size / 2, 0],
+        width=size,
+        orientation=90,
+        layer=(1, 0),
+        port_type="structural",
+    )
+    c.add_port(
+        name="slot2",
+        center=[(mxn[1] - 1) * size + size / 2, 0],
+        width=size,
+        orientation=90,
+        layer=(1, 0),
+        port_type="structural",
+    )
+    c.add_port(
+        name="key1",
+        center=[0, size / 2],
+        width=size,
+        orientation=180,
+        layer=(1, 0),
+        port_type="structural",
+    )
+    c.add_port(
+        name="key2",
+        center=[size * mxn[1], size / 2],
+        width=size,
+        orientation=0,
+        layer=(1, 0),
+        port_type="structural",
+    )
 
     return c
 
 
 @gf.cell
-def truss(width, size, mxn: tuple[int, int]):
+def truss(width, size, mxn: tuple[int, int], open:list[Literal['left','right','top','bottom']] = []):
     c = gf.Component()
     nrows, ncols = mxn
     if nrows != 1 and ncols != 1:
-        frame_col_bt = c << _truss_one_side(width, size, ncols)
-        frame_col_tp = c << _truss_one_side(width, size, ncols)
-        frame_row_left = c << _truss_one_side(width, size, nrows)
-        frame_row_right = c << _truss_one_side(width, size, nrows)
+        frame_col_bt = c << _truss_one_side(width, size, ncols) if 'bottom' not in open else c << _truss_core(width, size, (1, ncols))
+        frame_col_tp = c << _truss_one_side(width, size, ncols) if 'top' not in open else c << _truss_core(width, size, (1, ncols))
+        frame_row_left = c << _truss_one_side(width, size, nrows) if 'left' not in open else c << _truss_core(width, size, (1, nrows))
+        frame_row_right = c << _truss_one_side(width, size, nrows) if 'right' not in open else c << _truss_core(width, size, (1, nrows))
         frame_row_left.connect("key2", frame_col_bt.ports["slot1"])
         frame_row_right.connect("key1", frame_col_tp.ports["slot2"])
         frame_col_tp.connect("key1", frame_row_left.ports["slot1"], mirror=True)
-
         has_core = False
         if nrows > 2 and ncols > 2:
             has_core = True
