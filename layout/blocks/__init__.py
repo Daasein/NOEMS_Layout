@@ -9,3 +9,4 @@ from .springs import *
 from .utils import *
 from .actuation import *
 from .basic_geometry import *
+from .taper import *
