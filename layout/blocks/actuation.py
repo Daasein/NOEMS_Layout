@@ -95,7 +95,7 @@ def combdrive_fingers(
         layer=layer,
         port_type="placement",
     )
-    
+    c.info["base_length"] = c.bbox().height()
     create_deep_etch_mask(c,method='bbox',mask_offset=mask_offset,x_off=False)
     
     return c
