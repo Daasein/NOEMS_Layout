@@ -20,7 +20,7 @@ def _truss_quater_fill(width, size):
     r3.add_polygon(points=points, layer=(1, 0))
     c << gf.boolean(bool1, r3, operation="or", layer=(1, 0))
     c2 = gf.Component()
-    circle2 = c2 << gf.components.circle(radius=width / 3, layer=(2, 0))
+    circle2 = c2 << gf.components.circle(radius=width *0.2, layer=(2, 0))
     circle2.dmove((size, size))
     c3 = gf.Component()
     c3 << gf.boolean(c, c2, layer1=(1, 0), layer2=(2, 0), operation="not", layer=(1, 0))
@@ -48,7 +48,7 @@ def _truss_quater_open(width, size):
     c = gf.Component()
     fill = c << _truss_quater_fill(width, size)
     # c2 = gf.Component()
-    circle = c << gf.components.circle(radius=width*0.7, layer=(1, 0))
+    circle = c << gf.components.circle(radius=width*0.5, layer=(1, 0))
 
     c3 = gf.Component()
     c3 << gf.boolean(fill, circle, operation="not", layer=(1, 0))
@@ -397,3 +397,73 @@ def truss(width, size, mxn: tuple[int, int], open:list[Literal['left','right','t
     )
 
     return c
+
+@gf.cell
+def truss_v2(width, size, mxn: tuple[int, int], open:list[Literal['left','right','top','bottom']] = []):
+    c = gf.Component()
+    nrows, ncols = mxn
+    core = _truss_core(width, size, mxn)
+    # (c << core).move((width/2, width/2))
+    line_width = width
+    height = nrows * size + width - width/2* sum(1 for o in open if o in ('bottom', 'top'))
+    width = ncols * size + width - width/2* sum(1 for o in open if o in ('left', 'right'))
+    
+    vertical_side = gf.components.rectangle(size=(line_width/2, height), layer="WG")
+    horizontal_side = gf.components.rectangle(size=(width, line_width/2), layer="WG")
+    if 'left' not in open:
+        v1 = c << vertical_side
+    if 'bottom' not in open:
+        h1 = c << horizontal_side
+    if 'right' not in open:
+        v2 = c << vertical_side
+        v2.move((width - line_width/2, 0))
+    if 'top' not in open:
+        h2 = c << horizontal_side
+        h2.move((0, height - line_width/2))
+    
+    move_ = [line_width/2,line_width/2]
+    if 'left' in open:
+        move_[0] = 0
+    if 'bottom' in open:
+        move_[1] = 0
+    core_ = c << core
+    core_.move((move_[0], move_[1]))
+    c.move(origin=core_.center, destination=(0,0))      
+    
+    c.add_port(
+        name="W1",
+        center=(c.bbox().left, 0),
+        width=1,
+        orientation=180,
+        layer="WG",
+        port_type="placement",
+    )
+    c.add_port(
+        name="E1",
+        center=(c.bbox().right, 0),
+        width=1,
+        orientation=0,
+        layer="WG",
+        port_type="placement",
+    )
+    c.add_port(
+        name="S1",
+        center=(0, c.bbox().bottom),
+        width=1,
+        orientation=270,
+        layer="WG",
+        port_type="placement",
+    )
+    c.add_port(
+        name="N1",
+        center=(0, c.bbox().top),
+        width=1,
+        orientation=90,
+        layer="WG",
+        port_type="placement",
+    )
+    c.move(origin=(c.bbox().left, c.bbox().bottom), destination=(0,0))
+    c.info['width'] = width
+    c.info['height'] = height
+    return c
+

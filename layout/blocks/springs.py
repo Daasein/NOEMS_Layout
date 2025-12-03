@@ -1,5 +1,6 @@
 import gdsfactory as gf
-from blocks import truss, create_deep_etch_mask
+from blocks import truss, create_deep_etch_mask, truss_v2
+
 from math import ceil
 
 
@@ -52,16 +53,17 @@ def spring_with_truss(anchor_size=5, spring_length=20, spring_width=0.15):
 
 
 @gf.cell
-def spring_anchor_outside(spring_width=0.15, spring_length=20, spring_separation=3):
+def spring_anchor_outside(spring_width=0.16, spring_length=20, spring_separation=3):
     c = gf.Component()
     def flying_bar(truss_number, spring_width, spring_separation):
         c = gf.Component()
         truss_size = 1
-        truss_width = 0.15
-        truss_ = c << truss(truss_width, truss_size, (1, truss_number))
-        truss_.movex(-truss_number/2)
-        port_x = -spring_separation*1.5
-        for i in range(4):
+        truss_width = 0.16
+        truss_ = truss_v2(truss_width, truss_size, (1, truss_number))
+        truss_ref = c << truss_
+        truss_ref.movex(-truss_.info['width']/2)
+        port_x = -truss_.info['width']/2 + spring_width/2
+        for i in range(2):
             c.add_port(
                 name=f'p{i+1}',
                 center=(port_x,0),
@@ -71,41 +73,71 @@ def spring_anchor_outside(spring_width=0.15, spring_length=20, spring_separation
                 port_type='placement'
             )
             port_x += spring_separation
+        port_x = +truss_.info['width']/2 - spring_width/2
+        for i in range(4,2,-1):
+            c.add_port(
+                name=f'p{i}',
+                center=(port_x,0),
+                orientation=270,
+                width=spring_width,
+                layer='WG',
+                port_type='placement'
+            )
+            port_x -= spring_separation
+        c.info['width'] = truss_.info['width']
         return c
     
     def shuttle_frame(n1,n2,n3):
+        from blocks.truss import _truss_core
+        truss_width = 0.16
         c = gf.Component()
-        truss_11 = c << truss(0.15, 1, (1, n1))
-        truss_12 = c << truss(0.15, 1, (1, n1))
-        truss_21 = c << truss(0.15, 1, (n2, 1))
-        truss_22 = c << truss(0.15, 1, (n2, 1))
-        truss_3 = c << truss(0.15, 1, (1, n3))
+        truss_11 = c << _truss_core(truss_width, 1, (1, n1))
+        truss_21 = c << _truss_core(truss_width, 1, (n2, 1))
+        truss_3 = c << _truss_core(truss_width, 1, (1, n3))
         truss_3.movey(n2-1)
+        truss_22 = c << _truss_core(truss_width, 1, (n2, 1))
         truss_22.movex(n3-1)
+        truss_12 = c << _truss_core(truss_width, 1, (1, n1))
         truss_12.movex(n3-n1)
+        points = [
+        (0,0),
+        (n1, 0),
+        (n1, 1),
+        (1, 1),
+        (1, n2-1),
+        (n3-1, n2-1),
+        (n3-1, 1),
+        (n3-n1,1),
+        (n3-n1,0),
+        (n3,0),
+        (n3,n2)
+        ]
+        p = gf.Path(points)
+        sec = gf.Section(width=truss_width/2,offset=truss_width/4,layer='WG')
+        xs = gf.CrossSection(sections=[sec])
+        path_ref = c << p.extrude(xs)
         return c
 
+    fb_number = ceil(spring_separation*3+spring_width*2)
+    fb = flying_bar(fb_number, spring_width, spring_separation)
 
-    fb = flying_bar(ceil(spring_separation*3+spring_width*2), spring_width, spring_separation)
-
-    fb.pprint_ports()
     fb_ref = c << fb
     fb_ref.movey(spring_length)
-    # fb_ref.movex(-ceil(spring_separation*3+spring_width*2)/2)
+    
     spring_single = gf.components.rectangle(size=(spring_width, spring_length), layer='WG')
     spring_refs = [c << spring_single for _ in range(4)]
     for i, spring_ref in enumerate(spring_refs):
         spring_ref.connect("e2", fb_ref.ports[f'p{i+1}'], allow_type_mismatch=True)
         
-    n3 = ceil(spring_separation*5)
     n1 = ceil(spring_separation)+1
-    n2 = max(ceil(spring_length*1.2),spring_length+4)
+    n3 = 2*n1 + fb_number
+    n2 = max(ceil(spring_length*1.2),spring_length+6)
     sf_ref = c << shuttle_frame(n1, n2, n3)
     sf_ref.move((-n3/2,-1))
     
     # Anchors
     
-    anchor_width = spring_separation+spring_width
+    anchor_width = fb.info['width'] - 2*spring_separation
     anchor = gf.components.rectangle(size=(anchor_width,anchor_width/2), layer='WG')
     anchor_ref = c << anchor
     anchor_ref.movex(- anchor_width/2)
@@ -190,7 +222,7 @@ def spring_pair(
 @gf.cell
 def spring_pair_anchor_outside(
     spring_length=20,
-    spring_width=0.15,
+    spring_width=0.16,
     spring_separation=3,
     mask_offset=1,
     if_create_mask=True,
@@ -199,9 +231,9 @@ def spring_pair_anchor_outside(
     spring = spring_anchor_outside(spring_width, spring_length, spring_separation)
     down_spring = c << spring
     up_spring = c << spring
-    truss_connection = c << truss(0.15, 1, (5,spring.info['frame_length']))
+    truss_connection = c << truss_v2(0.16, 1, (4,spring.info['frame_length']), open=['top','bottom','left'])
     down_spring.connect("N1", truss_connection.ports["S1"])
-    up_spring.connect("N1", truss_connection.ports["N1"])
+    up_spring.connect("N1", truss_connection.ports["N1"],mirror=True)
     
 
     c.add_ports(truss_connection.ports.filter(regex="^E|^W"))
