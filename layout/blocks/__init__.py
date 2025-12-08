@@ -1,5 +1,4 @@
 from .cross_section import *
-from .test_blocks import *
 from .mylib import *
 from .spacer import *
 from .beams import *
@@ -10,3 +9,4 @@ from .utils import *
 from .actuation import *
 from .basic_geometry import *
 from .taper import *
+from .test_blocks import *

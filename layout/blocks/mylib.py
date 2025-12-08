@@ -280,9 +280,9 @@ def text_outline(
 
 
 @gf.cell
-def small_mark_set():
+def small_mark_set(layer=(7, 0)):
     c = gf.Component()
-    chip_alignment_mark = gf.components.cross(length=40, width=1, layer=(7, 0))
+    chip_alignment_mark = gf.components.cross(length=40, width=1, layer=layer)
     mark1 = c << chip_alignment_mark
     mark2 = c << chip_alignment_mark
     mark3 = c << chip_alignment_mark
@@ -292,42 +292,45 @@ def small_mark_set():
 
 
 @gf.cell
-def big_mark_set(seperation=1500):
+def big_mark_set(seperation=1500, layer=(7, 0)):
     c = gf.Component()
-    global_alignment_mark = gf.components.cross(length=1000, width=1, layer=(7, 0))
+    global_alignment_mark = gf.components.cross(length=1000, width=1, layer=layer)
     mark1 = c << global_alignment_mark
     mark2 = c << global_alignment_mark
     mark3 = c << global_alignment_mark
     mark1.dmove((0, seperation))
     mark3.dmove((0, -seperation))
-    (c << text_outline("1", size=100, layer=(7, 0), with_mask=False)).dmove(
+    (c << text_outline("1", size=100, layer=layer, with_mask=False)).dmove(
         (400, -seperation + 500)
     )
-    (c << text_outline("2", size=100, layer=(7, 0), with_mask=False)).dmove((400, 500))
-    (c << text_outline("3", size=100, layer=(7, 0), with_mask=False)).dmove(
+    (c << text_outline("2", size=100, layer=layer, with_mask=False)).dmove((400, 500))
+    (c << text_outline("3", size=100, layer=layer, with_mask=False)).dmove(
         (400, seperation + 500)
     )
     return c
 
 
 @gf.cell
-def die_with_alignment_marks(die_size):
+def die_with_alignment_marks(die_size, layers):
     c = gf.Component()
     c << gf.components.die(size=(die_size, die_size), die_name=f"{die_size}*{die_size}")
 
-    global_mark_left = c << big_mark_set()
-    global_mark_left.dmovex(die_size / 2 + 500)
-    global_mark_right = c << big_mark_set()
-    global_mark_right.dmovex(-die_size / 2 - 500)
-    chip_mark_points = [
-        [-die_size / 2 + 1000, die_size / 2 - 1000],
-        [die_size / 2 - 1000, die_size / 2 - 1000],
-        [die_size / 2 - 1000, -die_size / 2 + 1000],
-        [-die_size / 2 + 1000, -die_size / 2 + 1000],
-    ]
-    for point in chip_mark_points:
-        chip_mark = c << small_mark_set()
-        chip_mark.dmove(point)
+    for layer in layers:
+    
+        global_mark_left = c << big_mark_set(layer=layer)
+        global_mark_left.dmovex(die_size / 2 + 500)
+        global_mark_right = c << big_mark_set(layer=layer)
+        global_mark_right.dmovex(-die_size / 2 - 500)
+        chip_mark_points = [
+            [-die_size / 2 + 1000, die_size / 2 - 1000],
+            [die_size / 2 - 1000, die_size / 2 - 1000],
+            [die_size / 2 - 1000, -die_size / 2 + 1000],
+            [-die_size / 2 + 1000, -die_size / 2 + 1000],
+        ]
+        for point in chip_mark_points:
+            chip_mark = c << small_mark_set(layer=layer)
+            chip_mark.dmove(point)
+            
     return c
 
 

@@ -7,6 +7,7 @@ def cross_section_with_sleeves(
     core_layer="WG",
     sleeve_layer="DEEP_ETCH",
     radius=50,
+    radius_min=50,
 ):
     """Initialize a cross-section with a core and two sleeves."""
     sec1 = gf.Section(
@@ -22,7 +23,7 @@ def cross_section_with_sleeves(
     sec3 = gf.Section(
         width=core_width, offset=0, layer=core_layer, port_names=["o1", "o2"]
     )
-    xs = gf.CrossSection(sections=[sec3, sec1, sec2], radius=radius)
+    xs = gf.CrossSection(sections=[sec3, sec1, sec2], radius=radius, radius_min=radius_min)
     return xs
 
 

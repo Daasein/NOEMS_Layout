@@ -1,6 +1,6 @@
 import gdsfactory as gf
 from blocks import truss, create_deep_etch_mask, truss_v2
-
+from typing import Literal
 from math import ceil
 
 
@@ -53,7 +53,7 @@ def spring_with_truss(anchor_size=5, spring_length=20, spring_width=0.15):
 
 
 @gf.cell
-def spring_anchor_outside(spring_width=0.16, spring_length=20, spring_separation=3):
+def spring_anchor_outside(spring_width=0.16, spring_length=20, spring_separation=3, open: Literal[list['left', 'right']]=['left']):
     c = gf.Component()
     def flying_bar(truss_number, spring_width, spring_separation):
         c = gf.Component()
@@ -110,8 +110,11 @@ def spring_anchor_outside(spring_width=0.16, spring_length=20, spring_separation
         (n3-n1,1),
         (n3-n1,0),
         (n3,0),
-        (n3,n2)
         ]
+        if 'left' not in open:
+            points.insert(0, (0,n2))
+        if 'right' not in open:
+            points.append( (n3,n2) )
         p = gf.Path(points)
         sec = gf.Section(width=truss_width/2,offset=truss_width/4,layer='WG')
         xs = gf.CrossSection(sections=[sec])
@@ -173,7 +176,8 @@ def spring_anchor_outside(spring_width=0.16, spring_length=20, spring_separation
         layer='WG',
         port_type='electrical'
     )
-    c.info['frame_length'] = n3
+    c.info['frame_width'] = n3
+    c.info['frame_length'] = n2
     return c
 
 @gf.cell
@@ -226,12 +230,14 @@ def spring_pair_anchor_outside(
     spring_separation=3,
     mask_offset=1,
     if_create_mask=True,
+    open: Literal[list['left', 'right']]=['left']
 ):
     c = gf.Component()
-    spring = spring_anchor_outside(spring_width, spring_length, spring_separation)
+    spring = spring_anchor_outside(spring_width, spring_length, spring_separation, open=open)
     down_spring = c << spring
     up_spring = c << spring
-    truss_connection = c << truss_v2(0.16, 1, (4,spring.info['frame_length']), open=['top','bottom','left'])
+    truss_connection = c << truss_v2(0.16, 1, (4,spring.info['frame_width']), open=(['top','bottom'] + open))
+
     down_spring.connect("N1", truss_connection.ports["S1"])
     up_spring.connect("N1", truss_connection.ports["N1"],mirror=True)
     
@@ -251,4 +257,6 @@ def spring_pair_anchor_outside(
             "Parameter 'mask_offset' is not in use because 'if_create_mask' is False."
         )
     c.move(origin=c.center, destination=(0, 0))
+    c.info['frame_width'] = spring.info['frame_width']
+    c.info['frame_length'] = spring.info['frame_length']*2 + 4
     return c
