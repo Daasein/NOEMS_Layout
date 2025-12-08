@@ -36,6 +36,26 @@ def metal_wire(
     xs = gf.CrossSection(sections=[wg_sec, wire_sec, mask_sec1, mask_sec2],radius=1)
     return xs
 
+def routing_with_mytaper(c, port1:gf.Port, port2:gf.Port, cross_section1, cross_section2,taper_length=20):
+    Xtrans = gf.path.transition(cross_section1=cross_section1, cross_section2=cross_section2, width_type="linear",offset_type="linear")
+    p2_moved = port2.copy()
+    if port2.orientation == 0:
+        p2_moved.center = (p2_moved.center[0]+taper_length, p2_moved.center[1])
+    elif port2.orientation == 180:
+        p2_moved.center = (p2_moved.center[0]-taper_length, p2_moved.center[1])
+    elif port2.orientation == 90:
+        p2_moved.center = (p2_moved.center[0], p2_moved.center[1]+taper_length)
+    elif port2.orientation == 270:
+        p2_moved.center = (p2_moved.center[0], p2_moved.center[1]-taper_length)
+    
+    route = gf.routing.route_single(c, port1, p2_moved, cross_section=cross_section1, allow_width_mismatch=True, auto_taper=False)
+    trans = gf.path.straight(length=taper_length).extrude_transition(transition=Xtrans)
+    
+    p2_moved.orientation += 180
+    trans_ref = c << trans
+    trans_ref.connect(Xtrans.cross_section1.sections[0].port_names[0], p2_moved, allow_type_mismatch=True, allow_width_mismatch=True)
+    return route
+
 @gf.cell
 def doubly_clamped_beam_with_spring(beam_spec, spring_spec):
     c = gf.Component()
@@ -53,7 +73,7 @@ def doubly_clamped_beam_with_spring(beam_spec, spring_spec):
 @gf.cell
 def bridge(mxn = (5,3), mask_offset=10,open=[]):
     c = gf.Component()
-    truss_ref = truss(width=0.15,size=1,mxn=mxn,open=open)
+    truss_ref = truss_v2(width=0.16,size=1,mxn=mxn,open=open)
     c << truss_ref
     create_deep_etch_mask(c,'bbox',mask_offset=mask_offset,x_off=False)
     c.ports = truss_ref.ports
@@ -62,17 +82,17 @@ def bridge(mxn = (5,3), mask_offset=10,open=[]):
 def movable_finger_support(length,mask_offset=5, open=[]):
     c = gf.Component()
     total_number = int(length)
-    truss_ = truss(width=0.15,size=1,mxn=(total_number,3),open=open)
+    truss_ = truss_v2(width=0.16,size=1,mxn=(total_number,3),open=open)
     c << truss_
     create_deep_etch_mask(c,'bbox',mask_offset=mask_offset)
     c.ports = truss_.ports
     return c
-@gf.cell
+
 def finger_hard_support(size,mask_offset=5, metal_offset=2, metal_layer='MTOP'):
     c = gf.Component()
     rect = gf.components.rectangle(size=size,layer="WG")
     c << rect
-    metal = c << gf.components.rectangle(size=(size[0],size[1]-metal_offset),layer=metal_layer)
+    metal = c << gf.components.rectangle(size=(size[0]-metal_offset,size[1]-metal_offset),layer=metal_layer)
     metal.movey(metal_offset/2)
     create_deep_etch_mask(c,'bbox',mask_offset=mask_offset,x_off=False)
     for port in rect.ports:
@@ -92,13 +112,14 @@ def finger_hard_support(size,mask_offset=5, metal_offset=2, metal_layer='MTOP'):
             layer="WG",
             port_type='electrical'
         )
+    c.cross_section = metal_wire(core_width=size[1], wire_width=size[1]-metal_offset, mask_offset=mask_offset)
     return c
 @gf.cell
 def finger_hard_support_L(size,mask_offset=5, metal_offset=2, metal_layer='MTOP'):
     c = gf.Component()
     rect = gf.components.rectangle(size=size,layer="WG")
     c << rect
-    metal = c << gf.components.rectangle(size=(size[0]-metal_offset,size[1]-metal_offset),layer=metal_layer)
+    metal = c << gf.components.rectangle(size=(size[0]-2*metal_offset,size[1]-metal_offset),layer=metal_layer)
     metal.movex(metal_offset)
     metal.movey(metal_offset)
     
@@ -187,3 +208,78 @@ def beam_fixed_support(size,mask_offset=5, metal_offset=2, metal_layer='MTOP'):
         )
     return c
 
+@gf.cell
+def beam_test(width=10,length=50):
+    '''"
+    Test resistance of doubly clamped beam
+    '''
+    pad_= pad(size=(400,400),metal_offset=10)
+    xs = cross_section_with_sleeves(core_width=width,total_width=width+15)
+    beam = gf.components.straight(length=length, width=width, cross_section=xs)
+    c = gf.Component()
+    pad1_ref = c << pad_
+    pad2_ref = c << pad_
+    beam_ref = c << beam
+    pad1_ref.connect('E1', beam_ref.ports['o1'],allow_width_mismatch=True,allow_type_mismatch= True)
+    pad2_ref.connect('W1', beam_ref.ports['o2'],allow_width_mismatch=True,allow_type_mismatch= True)
+    # create_deep_etch_mask(c,'bbox',mask_offset=5,core_layer=['MTOP','WG','PADDING'],deep_etch_layer='DEEP_ETCH')
+    return c
+
+def convert_to_printable(c):
+    c2 = gf.Component()
+    # extract the layers of interest into a new component
+    layers = ['DEEP_ETCH', 'PADDING', 'WG','SHALLOW_ETCH']
+    layers = [gf.get_layer(layer) for layer in layers]
+    
+    c2 << c.extract(layers)
+
+    # get the polygons dictionary and layer keys
+    polys = c2.get_polygons()
+    reg = gf.kdb.Region()
+    
+
+    for layer in layers:
+        reg_layer = gf.kdb.Region(polys.get(layer, []))
+        reg.insert(reg_layer)
+    
+    holes = reg.holes()
+    # filter small holes
+    min_area = 1e6
+    small_holes = gf.kdb.Region()
+    
+    for poly in holes.each():
+        if poly.area() < min_area:
+            small_holes.insert(poly)
+    
+    # 将小面积的 holes 补回 reg 中
+    reg.insert(small_holes)
+    hulls = reg.sized(-2.5e3,1)
+
+    # add hulls to a new component if not empty
+    c_output = gf.Component()
+    # blk = c5 << gf.components.rectangle(size=(200,1100),layer="DEEP_ETCH")
+    # blk.move((-68,-87))
+    if not hulls.is_empty():
+        c_output.add_polygon(hulls, layer=("DEEP_ETCH"))
+    c_output.add_polygon(reg, layer=("WG"))
+    c_output.add_polygon(holes, layer=("DEEP_ETCH"))
+    
+    bbox = gf.kdb.DPolygon(c_output.bbox()).sized(100)
+    c_output.add_polygon(bbox, layer=(7,0))
+    c_output << gf.boolean(c_output,c_output,"not",(9,0),(7,0),"DEEP_ETCH")
+    for layer, polys in c2.get_polygons(layers=['DEEP_ETCH']).items():
+        for poly in polys:
+            c_output.add_polygon(poly,layer=(10,0))
+    c_output << c.extract(['MTOP','SHALLOW_ETCH'])
+    return c_output
+
+@gf.cell
+def ring_resonator_fill_middle(**kwargs):
+    ring_resonator_component = ring_resonator(**kwargs)
+    ring_resonator_component.extract(['DEEP_ETCH']).get_polygons(layers=['DEEP_ETCH'])
+    region = gf.kdb.Region(ring_resonator_component.extract(['DEEP_ETCH']).get_polygons(layers=['DEEP_ETCH'])[gf.get_layer('DEEP_ETCH')]).hulls()
+    c = gf.Component()
+    c << ring_resonator_component
+    c.add_polygon(region,layer=gf.get_layer('DEEP_ETCH'))
+    c.ports = ring_resonator_component.ports
+    return c
