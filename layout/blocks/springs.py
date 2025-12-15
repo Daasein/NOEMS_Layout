@@ -131,7 +131,16 @@ def spring_anchor_outside(spring_width=0.16, spring_length=20, spring_separation
     spring_refs = [c << spring_single for _ in range(4)]
     for i, spring_ref in enumerate(spring_refs):
         spring_ref.connect("e2", fb_ref.ports[f'p{i+1}'], allow_type_mismatch=True)
+    # add additional support incase spring width is large
+    if spring_width > 0.16:
+        support_ref = c << gf.components.rectangle(size=(spring_width-0.16, 1.08), layer='WG')
+        support_ref.connect("e2", spring_refs[0].ports["e4"], allow_type_mismatch=True,allow_width_mismatch=True)
+        support_ref.movex(0.08)
         
+        support_ref2 = c << gf.components.rectangle(size=(spring_width-0.16, 1.08), layer='WG')
+        support_ref2.connect("e2", spring_refs[3].ports["e4"], allow_type_mismatch=True,allow_width_mismatch=True)
+        support_ref2.movex(-0.08)
+    
     n1 = ceil(spring_separation)+1
     n3 = 2*n1 + fb_number
     n2 = max(ceil(spring_length*1.2),spring_length+6)

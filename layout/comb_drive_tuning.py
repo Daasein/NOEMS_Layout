@@ -36,19 +36,21 @@ def metal_wire(
     xs = gf.CrossSection(sections=[wg_sec, wire_sec, mask_sec1, mask_sec2],radius=1)
     return xs
 
-def routing_with_mytaper(c, port1:gf.Port, port2:gf.Port, cross_section1, cross_section2,taper_length=20):
-    Xtrans = gf.path.transition(cross_section1=cross_section1, cross_section2=cross_section2, width_type="linear",offset_type="linear")
+def routing_with_mytaper(c, port1:gf.Port, port2:gf.Port, cross_section1, cross_section2,taper_length=20, tangent_offset=0):
+    offset_sections = [section.model_copy(update={"offset": section.offset + tangent_offset}) for section in cross_section1.sections]
+    cross_section1_cp = cross_section1.copy(sections=offset_sections)
+    Xtrans = gf.path.transition(cross_section1=cross_section1_cp, cross_section2=cross_section2, width_type="linear",offset_type="linear")
     p2_moved = port2.copy()
     if port2.orientation == 0:
-        p2_moved.center = (p2_moved.center[0]+taper_length, p2_moved.center[1])
+        p2_moved.center = (p2_moved.center[0]+taper_length, p2_moved.center[1]+tangent_offset)
     elif port2.orientation == 180:
-        p2_moved.center = (p2_moved.center[0]-taper_length, p2_moved.center[1])
+        p2_moved.center = (p2_moved.center[0]-taper_length, p2_moved.center[1]-tangent_offset)
     elif port2.orientation == 90:
-        p2_moved.center = (p2_moved.center[0], p2_moved.center[1]+taper_length)
+        p2_moved.center = (p2_moved.center[0]+tangent_offset, p2_moved.center[1]+taper_length)
     elif port2.orientation == 270:
-        p2_moved.center = (p2_moved.center[0], p2_moved.center[1]-taper_length)
+        p2_moved.center = (p2_moved.center[0]-tangent_offset, p2_moved.center[1]-taper_length)
     
-    route = gf.routing.route_single(c, port1, p2_moved, cross_section=cross_section1, allow_width_mismatch=True, auto_taper=False)
+    route = gf.routing.route_single(c, port1, p2_moved, cross_section=cross_section1, allow_width_mismatch=True, auto_taper=False,start_straight_length=150)
     trans = gf.path.straight(length=taper_length).extrude_transition(transition=Xtrans)
     
     p2_moved.orientation += 180
@@ -225,7 +227,7 @@ def beam_test(width=10,length=50):
     # create_deep_etch_mask(c,'bbox',mask_offset=5,core_layer=['MTOP','WG','PADDING'],deep_etch_layer='DEEP_ETCH')
     return c
 
-def convert_to_printable(c):
+def convert_to_printable(c, post_collection_layers=['MTOP','SHALLOW_ETCH']):
     c2 = gf.Component()
     # extract the layers of interest into a new component
     layers = ['DEEP_ETCH', 'PADDING', 'WG','SHALLOW_ETCH']
@@ -253,7 +255,7 @@ def convert_to_printable(c):
     
     # 将小面积的 holes 补回 reg 中
     reg.insert(small_holes)
-    hulls = reg.sized(-2.5e3,1)
+    hulls = reg.sized(-5e3,1)
 
     # add hulls to a new component if not empty
     c_output = gf.Component()
@@ -262,7 +264,6 @@ def convert_to_printable(c):
     if not hulls.is_empty():
         c_output.add_polygon(hulls, layer=("DEEP_ETCH"))
     c_output.add_polygon(reg, layer=("WG"))
-    c_output.add_polygon(holes, layer=("DEEP_ETCH"))
     
     bbox = gf.kdb.DPolygon(c_output.bbox()).sized(100)
     c_output.add_polygon(bbox, layer=(7,0))
@@ -270,7 +271,7 @@ def convert_to_printable(c):
     for layer, polys in c2.get_polygons(layers=['DEEP_ETCH']).items():
         for poly in polys:
             c_output.add_polygon(poly,layer=(10,0))
-    c_output << c.extract(['MTOP','SHALLOW_ETCH'])
+    c_output << c.extract(post_collection_layers)
     return c_output
 
 @gf.cell
