@@ -46,9 +46,9 @@ def routing_with_mytaper(c, port1:gf.Port, port2:gf.Port, cross_section1, cross_
     elif port2.orientation == 180:
         p2_moved.center = (p2_moved.center[0]-taper_length, p2_moved.center[1]-tangent_offset)
     elif port2.orientation == 90:
-        p2_moved.center = (p2_moved.center[0]+tangent_offset, p2_moved.center[1]+taper_length)
+        p2_moved.center = (p2_moved.center[0]-tangent_offset, p2_moved.center[1]+taper_length)
     elif port2.orientation == 270:
-        p2_moved.center = (p2_moved.center[0]-tangent_offset, p2_moved.center[1]-taper_length)
+        p2_moved.center = (p2_moved.center[0]+tangent_offset, p2_moved.center[1]-taper_length)
     
     route = gf.routing.route_single(c, port1, p2_moved, cross_section=cross_section1, allow_width_mismatch=True, auto_taper=False,start_straight_length=150)
     trans = gf.path.straight(length=taper_length).extrude_transition(transition=Xtrans)
@@ -284,3 +284,97 @@ def ring_resonator_fill_middle(**kwargs):
     c.add_polygon(region,layer=gf.get_layer('DEEP_ETCH'))
     c.ports = ring_resonator_component.ports
     return c
+
+@gf.cell
+def etch_depth_array(spacing=150, layers=['WG','DEEP_ETCH'], frame_layer='DEEP_ETCH'):
+    def etch_depth_trench(size=(35,35), layer='WG'):
+        c = gf.Component()
+        layer_tuple = gf.get_layer_tuple(layer)
+        layer_name = ''
+        try:
+            layer_name = gf.get_layer_name(layer_tuple)
+        except ValueError:
+            pass
+        c << gf.components.rectangle(size=size, layer=layer)
+        text = c << gf.components.text(text=f"{layer_name}{layer_tuple}", size=10, layer=layer, position=(0,0))
+        text.move(origin=text.center, destination=(size[0]/2,-8))
+        return c
+    c = gf.Component()
+    col_per_row = ceil(700/spacing)
+    for i, layer in enumerate(layers):
+        trench = c << etch_depth_trench(layer=layer)
+        trench.move(((i%col_per_row)*spacing, -(i//col_per_row)*spacing))
+    c2 = gf.Component()
+    c2 << gf.components.add_frame(c, width=2, layer=frame_layer)
+    text = gf.components.text(text="Etch Depth", size=80, layer=frame_layer)
+    text_ref = c2 << text
+    text_ref.move(origin=(text.xmin, text.ymin), destination=(c2.xmin+10, c2.ymin+2))
+    return c2
+
+@gf.cell
+def litho_calipers(alignment_type:Literal['EBL','PL']= 'EBL', row_spacing=0, layer1='WG', layer2='SLAB150'):
+    num_notches = 5
+    if alignment_type == 'EBL':
+        notch_size = (0.3, 10)
+        notch_spacing = 2
+        offset_per_notch = 0.02
+    if alignment_type == 'PL':
+        notch_size = (2, 10)
+        notch_spacing = 2
+        offset_per_notch = 0.1
+    c = gf.Component()
+    c << gf.components.litho_calipers(
+        notch_size=notch_size, 
+        notch_spacing=notch_spacing, 
+        num_notches=num_notches, 
+        offset_per_notch=offset_per_notch, 
+        row_spacing=row_spacing, 
+        layer1=layer1, 
+        layer2=layer2)
+    layer_tuple1 = gf.get_layer_tuple(layer1)
+    layer_tuple2 = gf.get_layer_tuple(layer2)
+
+    main_label = c << text_outline(text=f"{layer_tuple1} M",size=10,layer=layer1,outline_width=1,with_mask=False)
+    main_label.move(origin=(main_label.xmin, main_label.ymin), destination=(num_notches*2*(notch_spacing+notch_size[0]) + 5,0))
+    
+    vernier_label = c << text_outline(text=f"{layer_tuple2} V",size=10,layer=layer2,outline_width=1,with_mask=False)
+    vernier_label.move(origin=(vernier_label.xmin, vernier_label.ymax), destination=(num_notches*2*(notch_spacing+notch_size[0]) + 5,0))
+    c2 = gf.Component()
+    horizontal = c2 << c
+    vertical = c2<<c
+    vertical.rotate(90)
+    vertical.move(origin=(vertical.xmin, 0), destination=(horizontal.xmin, horizontal.ymax+10))
+    label_text = f'''spacing = {notch_spacing}\noffset= {offset_per_notch}'''
+    label = c2 << text_outline(text=label_text, size=15, outline_width=1, with_mask=False,layer=layer1)
+    label.move(origin=(label.xmin, label.ymin), destination=(vertical.xmax,horizontal.ymax))
+    label2 = c2 << text_outline(text=label_text, size=15, outline_width=1, with_mask=False,layer=layer2)
+    label2.move(origin=(label2.xmin, label2.ymin), destination=(vertical.xmax,label.ymax))
+    return c2
+
+@gf.cell
+def litho_caliper_array(types:list[Literal['EBL', 'PL']], layers, frame_layer='DEEP_ETCH'):
+    """
+    Used to create a lithographic caliper array.
+    The first type and layer in the lists are used as the reference for all calipers.
+    
+    Args:
+        types (list[Literal['EBL', 'PL']]): List of types for the calipers.
+        layers (list): List of layers corresponding to the types.
+        frame_layer (str, optional): Layer for the frame. Defaults to 'DEEP_ETCH'.
+    """
+    c = gf.Component()
+    first_type, first_layer = types[0], layers[0]
+    for i, (type2, layer2) in enumerate(zip(types[1:], layers[1:])):
+        if 'PL' in (first_type, type2):
+            type_ = 'PL'
+        else:
+            type_ = 'EBL'
+        caliper = litho_calipers(alignment_type=type_, layer1=first_layer, layer2=layer2)
+        caliper_ref = c << caliper
+        caliper_ref.move((i%4 * 200, i//4 * -200))
+    c2 = gf.Component()
+    c2 << gf.components.add_frame(c, width=2, layer=frame_layer)
+    text = gf.components.text(text="Alignment", size=80, layer=frame_layer)
+    text_ref = c2 << text
+    text_ref.move(origin=(text.xmin, text.ymin), destination=(c2.xmin+10, c2.ymin+2))
+    return c2

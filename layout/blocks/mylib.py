@@ -268,7 +268,7 @@ def text_outline(
     with_mask=True,
 ):
     c = gf.Component()
-    t = gf.components.text_freetype(text=text, size=size - 1, layer=layer, font=font)
+    t = gf.components.text(text=text, size=size - 1, layer=layer)
     c2 = gf.Component()
     for p in t.get_polygons()[gf.get_layer(layer)]:
         c2.add_polygon(p.sized(outline_width * 1000), layer=layer)
