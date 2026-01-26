@@ -1,11 +1,42 @@
 import gdsfactory as gf
 from blocks import *
 
+from gdsfactory.generic_tech import get_generic_pdk
+from gdsfactory.typings import Layer
+from gdsfactory.technology import (
+    LayerMap,
+)
+generic_pdk = get_generic_pdk()
+class NEOMS_LayerMap(LayerMap):
+    WG: Layer = (1, 0)
+    DEEP_ETCH: Layer = (3, 6)
+    SHALLOW_ETCH: Layer = (2, 6)
+    ALD_CORE: Layer = (5, 0)
+    ALD_ETCH_EBL: Layer = (3, 8)
+    ALD_ETCH_PL: Layer = (3, 10)
+    DEEP_ETCH_EBL: Layer = (10,0)
+    DEEP_ETCH_PL: Layer = (9,0)
+    PROTECTION_PL: Layer = (11,0)
+    MTOP: Layer = (12, 24)
+    PADDING: Layer = (67,0)
+    SLAB150: Layer = (2, 0)
+    FLOORPLAN: Layer = getattr(generic_pdk.layers, "FLOORPLAN")
+    MARKER: Layer = (66, 0)
+pdk1 = gf.Pdk(
+    name="tunable_noems_pdk",
+    layers=NEOMS_LayerMap,
+    cross_sections=generic_pdk.cross_sections,
+    layer_views=generic_pdk.layer_views,
+    cells=generic_pdk.cells,
+)
+pdk1.activate()
+
+
 def metal_wire(
     core_width: float,
     wire_width: float,
     mask_offset: float,
-    
+    deep_etch_layer: str = "DEEP_ETCH",
 ):
     wire_sec = gf.Section(
         width=wire_width,
@@ -24,13 +55,13 @@ def metal_wire(
     mask_sec1 = gf.Section(
         width=mask_offset,
         offset=core_width / 2 + mask_offset / 2,
-        layer="DEEP_ETCH",
+        layer=deep_etch_layer,
         name="etch_mask1",
     )
     mask_sec2 = gf.Section(
         width=mask_offset,
         offset=-(core_width / 2 + mask_offset / 2),
-        layer="DEEP_ETCH",
+        layer=deep_etch_layer,
         name="etch_mask2",
     )
     xs = gf.CrossSection(sections=[wg_sec, wire_sec, mask_sec1, mask_sec2],radius=1)
@@ -96,7 +127,7 @@ def finger_hard_support(size,mask_offset=5, metal_offset=2, metal_layer='MTOP'):
     c << rect
     metal = c << gf.components.rectangle(size=(size[0]-metal_offset,size[1]-metal_offset),layer=metal_layer)
     metal.movey(metal_offset/2)
-    create_deep_etch_mask(c,'bbox',mask_offset=mask_offset,x_off=False)
+    create_deep_etch_mask(c,'bbox',mask_offset=mask_offset,x_off=False, deep_etch_layer='DEEP_ETCH_PL')
     for port in rect.ports:
         if port.orientation == 0:
             name = "E1"
@@ -114,7 +145,7 @@ def finger_hard_support(size,mask_offset=5, metal_offset=2, metal_layer='MTOP'):
             layer="WG",
             port_type='electrical'
         )
-    c.cross_section = metal_wire(core_width=size[1], wire_width=size[1]-metal_offset, mask_offset=mask_offset)
+    c.cross_section = metal_wire(core_width=size[1], wire_width=size[1]-metal_offset, mask_offset=mask_offset, deep_etch_layer='DEEP_ETCH_PL')
     return c
 @gf.cell
 def finger_hard_support_L(size,mask_offset=5, metal_offset=2, metal_layer='MTOP'):
@@ -190,7 +221,10 @@ def beam_fixed_support(size,mask_offset=5, metal_offset=2, metal_layer='MTOP'):
     c = gf.Component()
     rect = gf.components.rectangle(size=size,layer="WG")
     c << rect
-    create_deep_etch_mask(c,'bbox',mask_offset=mask_offset)
+    metal_rect = gf.components.rectangle(size=(size[0]-2*metal_offset, size[1]-2*metal_offset),layer=metal_layer)
+    metal_rect_ref = c << metal_rect
+    metal_rect_ref.move((metal_offset,metal_offset))
+    create_deep_etch_mask(c,'bbox',mask_offset=mask_offset, deep_etch_layer='DEEP_ETCH')
     for port in rect.ports:
         if port.orientation == 0:
             name = "E1"
@@ -230,7 +264,7 @@ def beam_test(width=10,length=50):
 def convert_to_printable(c, post_collection_layers=['MTOP','SHALLOW_ETCH']):
     c2 = gf.Component()
     # extract the layers of interest into a new component
-    layers = ['DEEP_ETCH', 'PADDING', 'WG','SHALLOW_ETCH']
+    layers = ['DEEP_ETCH', 'PADDING', 'WG','SHALLOW_ETCH', 'PROTECTION_PL','DEEP_ETCH_PL']
     layers = [gf.get_layer(layer) for layer in layers]
     
     c2 << c.extract(layers)
@@ -255,19 +289,24 @@ def convert_to_printable(c, post_collection_layers=['MTOP','SHALLOW_ETCH']):
     
     # 将小面积的 holes 补回 reg 中
     reg.insert(small_holes)
-    hulls = reg.sized(-5e3,1)
+    hulls = reg.sized(-3e3,1)
 
     # add hulls to a new component if not empty
     c_output = gf.Component()
-    # blk = c5 << gf.components.rectangle(size=(200,1100),layer="DEEP_ETCH")
-    # blk.move((-68,-87))
     if not hulls.is_empty():
         c_output.add_polygon(hulls, layer=("DEEP_ETCH"))
     c_output.add_polygon(reg, layer=("WG"))
     
     bbox = gf.kdb.DPolygon(c_output.bbox()).sized(100)
     c_output.add_polygon(bbox, layer=(7,0))
-    c_output << gf.boolean(c_output,c_output,"not",(9,0),(7,0),"DEEP_ETCH")
+    # DEEPETCH_PL is bbox - DEEP_ETCH + DEEP_ETCH_PL in original component
+    # c_output << gf.boolean(c_output,c_output,"not",'DEEP_ETCH_PL',(7,0),"DEEP_ETCH")
+    DEEPETCH_PL_component = gf.boolean(c_output,c_output,"not",'DEEP_ETCH_PL',(7,0),"DEEP_ETCH")
+    DEEPETCH_PL_component = gf.boolean(DEEPETCH_PL_component, c2, "or", "DEEP_ETCH_PL", "DEEP_ETCH_PL", "DEEP_ETCH_PL")
+    c_output << DEEPETCH_PL_component
+    
+    
+    
     for layer, polys in c2.get_polygons(layers=['DEEP_ETCH']).items():
         for poly in polys:
             c_output.add_polygon(poly,layer=(10,0))
@@ -378,3 +417,273 @@ def litho_caliper_array(types:list[Literal['EBL', 'PL']], layers, frame_layer='D
     text_ref = c2 << text
     text_ref.move(origin=(text.xmin, text.ymin), destination=(c2.xmin+10, c2.ymin+2))
     return c2
+
+@gf.cell
+def ALD_beam_with_ring_end(width=0.4, length=50, radius = 5, support_length=1,support_thickness = 0.1, layer:LayerSpec='ALD_CORE', mask_offset:float=1) -> gf.Component:
+    c = gf.Component()
+    beam = c << gf.components.rectangle(size=(length+width/2, width), layer=layer,port_type='placement')
+    def ring_end():
+        c = gf.Component()
+        ring_end = c << gf.components.ring(radius=radius, layer=layer, angle=180, width=width)
+        c.add_port('n1',center=(ring_end.center[0],ring_end.ymax),width=width,orientation=90,layer=layer,port_type='placement')
+        c.add_port('e_mid',center=(ring_end.center[0],ring_end.ymin),width=width,orientation=270,layer=layer,port_type='placement')
+        c.add_port('e1',center=(ring_end.xmin+width/2,ring_end.ymin),width=width,orientation=270,layer=layer,port_type='placement')
+        c.add_port('e2',center=(ring_end.xmax-width/2,ring_end.ymin),width=width,orientation=270,layer=layer,port_type='placement')
+        return c
+    ring = c << ring_end()
+    ring.connect('n1', beam.ports['e1'])
+    ring.movex(width/2)
+    create_deep_etch_mask(c, 'bbox', mask_offset=mask_offset, deep_etch_layer='DEEP_ETCH',x_off=False)
+    roung_corner_support = gf.components.rectangle(size=(support_thickness, support_length), layer=layer,port_type='placement')
+    ports = [ring.ports['e1'], ring.ports['e2'], beam.ports['e3']]
+    for port in ports:
+        corner_support = c << roung_corner_support
+        corner_support.connect('e1', port,allow_width_mismatch=True)
+    reg = c.get_region(layer=layer,merge=True)
+    reg2 = reg.rounded_corners(r_inner=(support_length-width)/2*1e3,r_outer=0, n=32)
+    c2 = gf.Component()
+    c2.add_polygon(reg2, layer=layer)
+    c2.add_ports(ports+[ring.ports['e_mid'],beam.ports['e4'].copy()])
+    c2 << c.extract(['DEEP_ETCH'])
+    c2 << gf.boolean(c2,c2,'not','ALD_ETCH_EBL','DEEP_ETCH','ALD_CORE')
+    return c2
+
+@gf.cell
+def electrode(width: float, height: float, cross_section, metal_offset, mask_offset=5) -> gf.Component:
+    c = gf.Component() 
+    xs_end = metal_wire(core_width=width, wire_width=width- 2*metal_offset, mask_offset=10.0)
+    xs_start = cross_section
+    
+    Xtrans1 = gf.path.transition(cross_section1=xs_start, cross_section2=xs_end, width_type="linear",offset_type="linear",)
+    electrode_body = gf.path.straight(length=height).extrude_transition(Xtrans1)
+    
+    body_ref = c << electrode_body
+    body_ref.rotate(-90)
+    
+    
+    end = gf.components.rectangle(size=(width, metal_offset*2), layer='WG')
+    rounded = end.get_region('WG').rounded_corners(r_outer=metal_offset*1000, r_inner=metal_offset,n=50)
+    rounded_c = gf.Component()
+    rounded_c.add_polygon(rounded, layer='WG')
+    bbox = end.bbox()
+    bbox.top = bbox.height()/2
+    bbox = gf.kdb.DPolygon(bbox)
+    c2 = gf.Component()
+    c2.add_polygon(bbox, layer='WG',)
+    
+    btm = c << gf.boolean(A=c2, B=rounded_c, operation="and", layer='WG')
+    btm.move((-width / 2, -height-metal_offset))
+
+    c.remove_layers(['DEEP_ETCH'])
+    
+    c.add_port(name='n1', center=(0, 0),cross_section=cross_section,orientation=90,port_type='electrical')
+    c.add_port(name='s1', center=(0, -height -metal_offset),width=1, layer='WG', orientation=270)
+    c.flatten()
+    create_deep_etch_mask(c,mask_offset=mask_offset,y_off=False, deep_etch_layer='DEEP_ETCH')
+    
+    return c
+
+@gf.cell
+def electrode_rect(width, height, metal_offset, mask_offset=5) -> gf.Component:
+    c = gf.Component()
+    metal_height = height - 2 * metal_offset
+    metal_width = width - 2 * metal_offset
+    metal = gf.components.rectangle(size=(metal_width, metal_height), layer="MTOP")
+    metal_rounded = metal.get_region(layer="MTOP").rounded_corners(r_inner=0, r_outer=metal_offset*1000, n=50)
+    c.add_polygon(metal_rounded, layer="MTOP")
+    
+    silicon = gf.components.rectangle(size=(width, height), layer="WG")
+    silicon_rounded = silicon.get_region(layer="WG").rounded_corners(r_inner=0, r_outer=metal_offset*1000, n=50)
+    silicon_rounded_c = gf.Component()
+    silicon_rounded_c.add_polygon(silicon_rounded, layer="WG")
+    silicon_rounded_c.ports = silicon.ports
+    silicon_rounded_ref = c << silicon_rounded_c
+    
+    silicon_rounded_ref.move((-metal_offset, -metal_offset))
+    c.ports = metal.ports
+    c.add_ports(silicon_rounded_ref.ports)
+    c.auto_rename_ports()
+    create_deep_etch_mask(c,'bbox',mask_offset=mask_offset)
+    return c
+
+@gf.cell
+def perforated_shaft(width=100, height=20, hole_size=(15,5), margin=5, recursive_fill=True, brick_mode:Literal[0,1]=0,mask_offset=5) -> gf.Component:
+    """Generates a rectangular waveguide component 'shaft' filled with a tiled 
+    pattern of rounded rectangular holes (bricks).
+
+    The function creates a waveguide layer and populates it with an array of holes. 
+    If recursive_fill is enabled, it attempts to fill remaining empty spaces by 
+    incrementally decreasing the hole size until the margin limit is reached.
+
+    Args:
+        width: Total width of the waveguide shaft.
+        height: Total height of the waveguide shaft.
+        hole_size: Dimensions (x, y) of the initial hole/brick to be placed.
+        margin: The minimum spacing between holes and between holes and the 
+            waveguide edge.
+        recursive_fill: If True, iteratively fills remaining gaps with 
+            progressively smaller holes (decreasing size by 1 unit per iteration).
+        brick_mode: Tiling orientation and fill strategy.
+            0: Horizontal emphasis. Bricks are tiled with a half-width offset in 
+               the x-direction (staggered columns).
+            1: Vertical emphasis. Bricks are tiled with a half-height offset in 
+               the y-direction (staggered rows).
+
+    Returns:
+        gf.Component: A component containing the waveguide ('WG' layer) with the 
+            patterned holes subtracted. Includes a deep etch mask based on the 
+            bounding box.
+
+    Note:
+        - The holes are automatically rounded using a corner radius of 1000 
+          (effectively max rounding for small holes).
+        - Uses boolean 'not' operations to extract hole regions from the 
+          waveguide bulk.
+    """
+    hole_layer = (1,2)
+    brick_layer = (1,3)
+    def brick(size):
+        c = gf.Component()
+        reg = gf.components.rectangle(size=size, layer=hole_layer).get_region(hole_layer)
+        rounded = reg.rounded_corners(0, 1000,10)
+        c.add_polygon(rounded, layer=hole_layer)
+        bbox = c.bbox()
+        bbox.bottom -= margin/2
+        bbox.top += margin/2
+        bbox.left -= margin/2
+        bbox.right += margin/2
+        c.add_polygon(gf.kdb.DPolygon(bbox),brick_layer)
+        return c
+    c = gf.Component()
+    shaft = gf.components.rectangle(size=(width, height), layer='WG')
+    pattern_area = gf.components.rectangle(size=(width - margin, height - margin), layer='WG')
+    pattern_area_ref = c << pattern_area
+    pattern_area_ref.move((margin/2, margin/2))
+    
+    idx = brick_mode
+    current_hole_size = hole_size[idx]
+     
+    
+    while current_hole_size >= margin/2:
+        brick_size = (current_hole_size,hole_size[1]) if brick_mode ==0 else (hole_size[0],current_hole_size)
+        brick_ = brick(size=brick_size)
+        c2 = gf.boolean(c,c,'not','WG','WG',brick_layer)
+        if brick_mode == 0:
+            c2.fill(brick_,
+                fill_layers=[('WG',0)],
+                row_step=gf.kdb.DVector(brick_size[0]+margin,0),
+                col_step=gf.kdb.DVector(brick_size[0]/2+margin/2,brick_size[1]+margin),
+                multi=True
+                )
+        if brick_mode == 1:
+            c2.fill(brick_,
+                fill_layers=[('WG',0)],
+                row_step=gf.kdb.DVector(brick_size[0]+margin,brick_size[1]/2+margin/2),
+                col_step=gf.kdb.DVector(0,brick_size[1]+margin),
+                multi=True
+                )
+            
+        
+        current_hole_size -= 1
+        if brick_layer not in c2.layers:
+            continue
+        c.add_ref(c2.extract(layers=[hole_layer,brick_layer]))
+        
+        if not recursive_fill:
+            break
+    c << shaft
+    c2 = gf.Component()
+    holes_ref = c2 << c.extract(layers=[hole_layer,brick_layer])
+    holes_ref.move(origin=holes_ref.center, destination=shaft.center)
+    final_component = gf.boolean(shaft, holes_ref, 'not', 'WG', 'WG', hole_layer)
+    final_component.ports = shaft.ports
+    create_deep_etch_mask(final_component, 'bbox', deep_etch_layer='DEEP_ETCH_PL', mask_offset=mask_offset)
+    return final_component
+
+@gf.cell
+def spring_5um(spring_width, spring_length, separation, num_loops, mask_offset=5) -> gf.Component:
+    c = gf.Component()
+    # spring base support
+    base = perforated_shaft(width=separation, height=separation)
+    flying_bar = perforated_shaft(width=separation, height=separation/2)
+    base_start = c << base
+    beam_single = gf.components.rectangle(size=(spring_length, spring_width), layer='WG')
+    
+    beam_start = c << beam_single
+    beam_start.connect('e1', base_start.ports['e4'],allow_width_mismatch=True,allow_type_mismatch=True)
+    beam_start.movex(separation/2-spring_width/2)
+    
+    current_beam = beam_start
+    for _ in range(num_loops):
+        flying_bar_ref = c << flying_bar
+        flying_bar_ref.connect('e2', current_beam.ports['e3'],allow_width_mismatch=True,allow_type_mismatch=True).movex(separation/2-spring_width/2)
+        beam = c << beam_single
+        beam.connect('e1', flying_bar_ref.ports['e2'],allow_width_mismatch=True,allow_type_mismatch=True).movex(separation/2-spring_width/2)
+        flying_bar_ref2 = c << flying_bar
+        flying_bar_ref2.connect('e4', beam.ports['e3'],allow_width_mismatch=True,allow_type_mismatch=True).movex(separation/2-spring_width/2)
+        beam2 = c << beam_single
+        beam2.connect('e1', flying_bar_ref2.ports['e4'],allow_width_mismatch=True,allow_type_mismatch=True).movex(separation/2-spring_width/2)
+        current_beam = beam2
+    
+    base_end = c << gf.components.rectangle(size=(separation, separation), layer='WG')
+    base_end.connect('e2', current_beam.ports['e3'],allow_width_mismatch=True,allow_type_mismatch=True).movex(separation/2-spring_width/2)
+    
+    c.add_port(name='p1',port=base_start.ports['e2'])
+    c.add_port(name='p2',port=base_end.ports['e4'])
+    total_width = c.xsize
+    create_deep_etch_mask(c, 'bbox', deep_etch_layer='DEEP_ETCH_PL', mask_offset=mask_offset)
+    c = merge_layers_with_priority(c, {'WG':3,'PADDING':2,'DEEP_ETCH':1,'DEEP_ETCH_PL':1})
+    
+    c.info['total_width'] = total_width
+    
+    return c
+
+@gf.cell
+def combdrive_fingers_5um(finger_length:float=20.0, finger_width:float=2, finger_gap:float=2, overlap=2, pair_num=20, round_corner=1) -> gf.Component:
+    c = gf.Component()
+    
+    finger_pts = [(0, 0), (finger_length, 0), (finger_length, finger_width), (0, finger_width)]
+    finger_single = gf.Component()
+    finger_single.add_polygon(finger_pts, layer='WG')
+    round_corner_pts = [(0, 0), (2*round_corner*1000, 0), (2*round_corner*1000, finger_width*1000), (0, finger_width*1000)]
+    round_corner_poly = gf.kdb.Polygon(round_corner_pts).round_corners(rinner=0,router=round_corner*1000,n=16).moved(dx=finger_length*1000 - round_corner*1000,dy=0)
+    finger_single.add_polygon(round_corner_poly, layer='WG')
+    finger_single.flatten()
+    
+    for i in range(pair_num):
+        finger_l = c << finger_single
+        finger_l.movey(2*i*(finger_width + finger_gap))
+        finger_r = c << finger_single
+        finger_r.mirror()
+        finger_r.movex(2*finger_length - overlap).movey(finger_gap+finger_width)
+        finger_r.movey(2*i*(finger_width + finger_gap))
+    finger_l = c << finger_single
+    finger_l.movey(2*pair_num*(finger_width + finger_gap))
+    c.move(origin=c.center, destination=(0,0))
+    c.add_port(name='w1', center=(c.xmin, 0), orientation=180,width=finger_width,layer='WG',port_type='placement')
+    c.add_port(name='e1', center=(c.xmax, 0), orientation=0,width=finger_width,layer='WG',port_type='placement')
+    c.info['total_length'] = c.ysize
+    c.info['total_width'] = c.xsize
+    return c
+
+@gf.cell
+def combdrive_array(finger_spec, movable_base_width, fixed_base_width) -> gf.Component:
+    c = gf.Component()
+    
+    base_length = finger_spec().ysize + 30  # ensure base is longer than finger
+    movable_base = perforated_shaft(width=movable_base_width, height=base_length,brick_mode=1,hole_size=(5,10), margin=5)
+    movable_base_ref = c.add_ref(movable_base)
+    finger_ref = c.add_ref(finger_spec())
+    movable_base_ref.connect('e1', finger_ref.ports['w1'],allow_layer_mismatch=True,allow_width_mismatch=True,allow_type_mismatch=True)
+    movable_base_ref.movey(-10)
+    
+    fixed_base = gf.components.rectangle(size=(fixed_base_width, base_length), layer='WG')
+    fixed_base_ref = c.add_ref(fixed_base)
+    fixed_base_ref.connect('e1', finger_ref.ports['e1'],allow_layer_mismatch=True,allow_width_mismatch=True,allow_type_mismatch=True)
+    fixed_base_ref.movey(10)
+    
+    c.add_port(name='m', port=movable_base_ref.ports['e2'])
+    c.add_port(name='f', port=fixed_base_ref.ports['e2'])
+    create_deep_etch_mask(c, 'bbox', deep_etch_layer='DEEP_ETCH_PL', mask_offset=10)
+    
+    return c
