@@ -41,15 +41,13 @@ def waveguide_inv_extrude(
 def ring_resonator(
     gap,
     radius,
-    length_y,
     length_x,
+    length_y,
     cross_section,
-    total_width=4,
-    core_layer="WG",
-    sleeve_layer="DEEP_ETCH",
-    x_span=100,
+    x_span=20,
     bend="bend_euler",
 ):
+    core_layer = cross_section.layer
     c = gf.Component()
     ring_single = gf.components.ring_single(
         cross_section=cross_section,
@@ -58,39 +56,15 @@ def ring_resonator(
         length_y=length_y,
         length_x=length_x,
         bend=bend,
+        length_extension=x_span / 2 - length_x / 2,
     )
-    c << ring_single
-    straight1 = c << waveguide_inv_extrude(
-        width=cross_section.width,
-        length=x_span / 2,
-        total_width=total_width,
-        core_layer=core_layer,
-        sleeve_layer=sleeve_layer,
-    )
-    straight2 = c << waveguide_inv_extrude(
-        width=cross_section.width,
-        length=x_span / 2,
-        total_width=total_width,
-        core_layer=core_layer,
-        sleeve_layer=sleeve_layer,
-    )
-    straight1.connect(port="o2", other=ring_single.ports["o1"])
-    straight2.connect(port="o1", other=ring_single.ports["o2"])
-    new_sleeve = gf.boolean(
-        c,
-        c,
-        layer1=sleeve_layer,
-        layer2=core_layer,
-        operation="not",
-        layer=sleeve_layer,
-    )
-    c.add_port(name="o1", port=straight1.ports["o1"])
-    c.add_port(name="o2", port=straight2.ports["o2"])
-    # add a structure port at the middle of the ring top
+
     ring_top_pos = (
         -length_x / 2,
         radius * 2 + length_y + cross_section.width * 3 / 2 + gap,
     )
+    c << ring_single
+    c.ports = ring_single.ports
     c.add_port(
         name="p1",
         center=ring_top_pos,
@@ -100,11 +74,27 @@ def ring_resonator(
         port_type="placement",
     )
 
-    c2 = gf.Component()
-    c2 << c.extract([(1, 0)])
-    c2 << new_sleeve
-    c2.add_ports(c.ports)
-    return c2
+    with_sleeve = False
+    section_names = set([section.name for section in cross_section.sections])
+    if "sleeve" in section_names:
+        with_sleeve = True
+
+    if with_sleeve:
+
+        section_layers = set([section.layer for section in cross_section.sections])
+        section_layers.remove(core_layer)
+        sleeve_layer = list(section_layers)[0]
+        c2 = gf.Component()
+        c2 << gf.boolean(
+            c, c, "or", layer=core_layer, layer1=core_layer, layer2=core_layer
+        )
+        c2 << gf.boolean(
+            c, c, "not", layer=sleeve_layer, layer1=sleeve_layer, layer2=core_layer
+        )
+        c2.ports = c.ports
+        return c2
+    else:
+        return c
 
 
 @gf.cell
@@ -278,7 +268,7 @@ def text_outline(
     with_mask=True,
 ):
     c = gf.Component()
-    t = gf.components.text_freetype(text=text, size=size - 1, layer=layer, font=font)
+    t = gf.components.text(text=text, size=size - 1, layer=layer)
     c2 = gf.Component()
     for p in t.get_polygons()[gf.get_layer(layer)]:
         c2.add_polygon(p.sized(outline_width * 1000), layer=layer)
@@ -290,9 +280,9 @@ def text_outline(
 
 
 @gf.cell
-def small_mark_set():
+def small_mark_set(layer=(7, 0)):
     c = gf.Component()
-    chip_alignment_mark = gf.components.cross(length=40, width=1, layer=(7, 0))
+    chip_alignment_mark = gf.components.cross(length=40, width=1, layer=layer)
     mark1 = c << chip_alignment_mark
     mark2 = c << chip_alignment_mark
     mark3 = c << chip_alignment_mark
@@ -302,38 +292,45 @@ def small_mark_set():
 
 
 @gf.cell
-def big_mark_set(seperation=1500):
+def big_mark_set(seperation=1500, layer=(7, 0)):
     c = gf.Component()
-    global_alignment_mark = gf.components.cross(length=1000, width=1, layer=(7, 0))
+    global_alignment_mark = gf.components.cross(length=1000, width=1, layer=layer)
     mark1 = c << global_alignment_mark
     mark2 = c << global_alignment_mark
     mark3 = c << global_alignment_mark
     mark1.dmove((0, seperation))
     mark3.dmove((0, -seperation))
-    (c << text_outline("1", size=100, layer=(7, 0))).dmove((400, -seperation + 500))
-    (c << text_outline("2", size=100, layer=(7, 0))).dmove((400, 500))
-    (c << text_outline("3", size=100, layer=(7, 0))).dmove((400, seperation + 500))
+    (c << text_outline("1", size=100, layer=layer, with_mask=False)).dmove(
+        (400, -seperation + 500)
+    )
+    (c << text_outline("2", size=100, layer=layer, with_mask=False)).dmove((400, 500))
+    (c << text_outline("3", size=100, layer=layer, with_mask=False)).dmove(
+        (400, seperation + 500)
+    )
     return c
 
 
 @gf.cell
-def die_with_alignment_marks(die_size):
+def die_with_alignment_marks(die_size, layers):
     c = gf.Component()
     c << gf.components.die(size=(die_size, die_size), die_name=f"{die_size}*{die_size}")
 
-    global_mark_left = c << big_mark_set()
-    global_mark_left.dmovex(die_size / 2 + 500)
-    global_mark_right = c << big_mark_set()
-    global_mark_right.dmovex(-die_size / 2 - 500)
-    chip_mark_points = [
-        [-die_size / 2 + 1000, die_size / 2 - 1000],
-        [die_size / 2 - 1000, die_size / 2 - 1000],
-        [die_size / 2 - 1000, -die_size / 2 + 1000],
-        [-die_size / 2 + 1000, -die_size / 2 + 1000],
-    ]
-    for point in chip_mark_points:
-        chip_mark = c << small_mark_set()
-        chip_mark.dmove(point)
+    for layer in layers:
+    
+        global_mark_left = c << big_mark_set(layer=layer)
+        global_mark_left.dmovex(die_size / 2 + 500)
+        global_mark_right = c << big_mark_set(layer=layer)
+        global_mark_right.dmovex(-die_size / 2 - 500)
+        chip_mark_points = [
+            [-die_size / 2 + 1000, die_size / 2 - 1000],
+            [die_size / 2 - 1000, die_size / 2 - 1000],
+            [die_size / 2 - 1000, -die_size / 2 + 1000],
+            [-die_size / 2 + 1000, -die_size / 2 + 1000],
+        ]
+        for point in chip_mark_points:
+            chip_mark = c << small_mark_set(layer=layer)
+            chip_mark.dmove(point)
+            
     return c
 
 
