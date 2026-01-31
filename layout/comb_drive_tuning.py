@@ -507,7 +507,7 @@ def electrode_rect(width, height, metal_offset, mask_offset=5) -> gf.Component:
     return c
 
 @gf.cell
-def perforated_shaft(width=100, height=20, hole_size=(15,5), margin=5, recursive_fill=True, brick_mode:Literal[0,1]=0,mask_offset=5) -> gf.Component:
+def perforated_shaft(width=100, height=20, hole_size=(15,5), margin=5, recursive_fill=True, brick_mode:Literal[0,1]=0,create_mask=True,mask_offset=5) -> gf.Component:
     """Generates a rectangular waveguide component 'shaft' filled with a tiled 
     pattern of rounded rectangular holes (bricks).
 
@@ -597,7 +597,8 @@ def perforated_shaft(width=100, height=20, hole_size=(15,5), margin=5, recursive
     holes_ref.move(origin=holes_ref.center, destination=shaft.center)
     final_component = gf.boolean(shaft, holes_ref, 'not', 'WG', 'WG', hole_layer)
     final_component.ports = shaft.ports
-    create_deep_etch_mask(final_component, 'bbox', deep_etch_layer='DEEP_ETCH_PL', mask_offset=mask_offset)
+    if create_mask:
+        create_deep_etch_mask(final_component, 'bbox', deep_etch_layer='DEEP_ETCH_PL', mask_offset=mask_offset)
     return final_component
 
 @gf.cell
@@ -667,11 +668,11 @@ def combdrive_fingers_5um(finger_length:float=20.0, finger_width:float=2, finger
     return c
 
 @gf.cell
-def combdrive_array(finger_spec, movable_base_width, fixed_base_width) -> gf.Component:
+def combdrive_array(finger_spec, movable_base_width, fixed_base_width, mask_offset=10) -> gf.Component:
     c = gf.Component()
     
     base_length = finger_spec().ysize + 30  # ensure base is longer than finger
-    movable_base = perforated_shaft(width=movable_base_width, height=base_length,brick_mode=1,hole_size=(5,10), margin=5)
+    movable_base = perforated_shaft(width=movable_base_width, height=base_length,brick_mode=1,hole_size=(5,10), margin=5,create_mask=False)
     movable_base_ref = c.add_ref(movable_base)
     finger_ref = c.add_ref(finger_spec())
     movable_base_ref.connect('e1', finger_ref.ports['w1'],allow_layer_mismatch=True,allow_width_mismatch=True,allow_type_mismatch=True)
@@ -684,6 +685,6 @@ def combdrive_array(finger_spec, movable_base_width, fixed_base_width) -> gf.Com
     
     c.add_port(name='m', port=movable_base_ref.ports['e2'])
     c.add_port(name='f', port=fixed_base_ref.ports['e2'])
-    create_deep_etch_mask(c, 'bbox', deep_etch_layer='DEEP_ETCH_PL', mask_offset=10)
+    create_deep_etch_mask(c, 'bbox', deep_etch_layer='DEEP_ETCH_PL', mask_offset=mask_offset)
     
     return c
