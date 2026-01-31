@@ -31,3 +31,7 @@ test*.ipynb
 # Exclude gds_files folder
 **/gds_files/
 build/
+
+*.mph.lock
+
+*.gds
