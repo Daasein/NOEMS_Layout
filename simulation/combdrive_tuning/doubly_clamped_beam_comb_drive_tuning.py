@@ -57,6 +57,8 @@ def doubly_clamped_beam_comb_drive_tuning(
     finger_length=20,
     finger_overlap=5, 
     shaft_height=100,
+    shaft_hole_size=(20,2),
+    shaft_hole_margin=10,
     electrode_gap = 5,
     mask_offset = 10
     ) -> gf.Component: 
@@ -64,7 +66,7 @@ def doubly_clamped_beam_comb_drive_tuning(
     spring = spring_5um(spring_length=spring_length,spring_width=spring_width, separation=spring_separation, num_loops=spring_loop_num,mask_offset=mask_offset)
     shaft_width = combdrive_spacing*(combdrive_array_num_push+combdrive_array_num_pull) + spring.info['total_width']*2
     beam = doubly_clamped_beam_with_round_support(width=beam_width, length=beam_length, support_length=[2, 2],create_mask=True, mask_offset=electrode_gap+5)
-    shaft = perforated_shaft(width=shaft_width, height=shaft_height,margin=5, mask_offset=mask_offset, hole_size=(20,5))
+    shaft = perforated_shaft(width=shaft_width, height=shaft_height,margin=shaft_hole_margin, mask_offset=mask_offset, hole_size=shaft_hole_size)
     
     beam_ref = c << beam
     
