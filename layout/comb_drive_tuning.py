@@ -688,3 +688,42 @@ def combdrive_array(finger_spec, movable_base_width, fixed_base_width, mask_offs
     create_deep_etch_mask(c, 'bbox', deep_etch_layer='DEEP_ETCH_PL', mask_offset=mask_offset)
     
     return c
+
+def folded_spring_5um(length, width, separation, anchor_size, flying_bar_height, shaft_hole_size, shaft_margin, mask_offset=2):
+    Point = gf.kdb.Point
+    Trans = gf.kdb.Trans    
+    c_out = gf.Component()
+    anchor = gf.components.rectangle(size=(anchor_size, anchor_size))
+    flying_bar = perforated_shaft(width=3*separation+width, height=flying_bar_height, hole_size=shaft_hole_size, margin=shaft_margin, create_mask=False)
+    beam_single = gf.components.rectangle(size=(length, width))
+    
+    flying_bar_ref = c_out.add_ref(flying_bar)
+    x_start = width/2
+    y_start = flying_bar_height
+    center_p = Point(flying_bar_ref.ports['e2'].x*1000, flying_bar_ref.ports['e2'].y*1000)
+    beam_refs = []
+    for i in range(4):
+        beam_ref = c_out.add_ref(beam_single)
+        beam_ref.connect('e1', flying_bar_ref.ports['e2'].copy(Trans(Point(x_start*1000, y_start*1000)-center_p)),
+                         allow_width_mismatch=True)
+        beam_refs.append(beam_ref)
+        x_start += separation
+    anchor_1 = c_out.add_ref(anchor)
+    anchor_1.connect('e1', beam_refs[-1].ports['e3'].copy(Trans(x=(anchor_size/2-width/2)*1000,y=0)), allow_width_mismatch=True)
+    
+    anchor_2 = c_out.add_ref(anchor)
+    anchor_2.connect('e1', beam_refs[0].ports['e3'].copy(Trans(x=-(anchor_size/2-width/2)*1000,y=0)), allow_width_mismatch=True)
+    
+    anchor_3 = perforated_shaft(width=separation+width, height=anchor_size+10, hole_size=(shaft_hole_size[1],shaft_hole_size[0]), margin=shaft_margin, brick_mode=1,create_mask=False)
+    anchor_3_ref = c_out.add_ref(anchor_3)
+    anchor_3_ref.connect('e4', flying_bar_ref.ports['e2'].copy(Trans(x=0,y=(length*1000))),
+                         allow_width_mismatch=True)
+    c_out.add_ports([
+        anchor_3_ref.ports['e2'],
+        anchor_1.ports['e4'],
+        anchor_2.ports['e2']
+    ])
+    c_out.auto_rename_ports()
+    create_deep_etch_mask(c_out, 'bbox', mask_offset=mask_offset)
+    
+    return c_out
