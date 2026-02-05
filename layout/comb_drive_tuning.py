@@ -689,6 +689,7 @@ def combdrive_array(finger_spec, movable_base_width, fixed_base_width, mask_offs
     
     return c
 
+@gf.cell
 def folded_spring_5um(length, width, separation, anchor_size, flying_bar_height, shaft_hole_size, shaft_margin, mask_offset=2):
     Point = gf.kdb.Point
     Trans = gf.kdb.Trans    
@@ -724,6 +725,9 @@ def folded_spring_5um(length, width, separation, anchor_size, flying_bar_height,
         anchor_2.ports['e2']
     ])
     c_out.auto_rename_ports()
-    create_deep_etch_mask(c_out, 'bbox', mask_offset=mask_offset)
+    c_out.info['total_width'] = c_out.xsize
+
+    create_deep_etch_mask(c_out, 'bbox', mask_offset=mask_offset,deep_etch_layer='DEEP_ETCH_PL')
+    
     
     return c_out
