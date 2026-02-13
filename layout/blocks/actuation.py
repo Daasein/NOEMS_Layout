@@ -1,6 +1,7 @@
 from itertools import chain
 from math import ceil, floor
 import gdsfactory as gf
+from .utils import create_deep_etch_mask
 
 
 @gf.cell
@@ -11,12 +12,15 @@ def combdrive_fingers(
     thickness: float | int = 5.0,
     base_thickness: float | int = 3.0,
     a_c: float | int = 3.0,
+    base_length: float | int | None = None,
     layer="WG",
+    mask_offset=1,
+    with_mask: bool = False,
 ):
     c = gf.Component()
 
     width = 2 * base_thickness + finger_length + a_c  # total length
-    height = fingers * thickness + (fingers - 1) * finger_gap  # total height
+    height = fingers * thickness + (fingers - 1) * finger_gap 
     points_1 = [
         (0, 0),
         (0, height),
@@ -92,4 +96,21 @@ def combdrive_fingers(
         layer=layer,
         port_type="placement",
     )
+    
+    
+    # add a extended base if specified
+    if base_length is not None:
+        base_extension = gf.components.rectangle(
+            size=(base_thickness, base_length), layer=layer, port_type="placement"
+        )
+        base_extension_ref_1 = c.add_ref(base_extension)
+        base_extension_ref_1.connect("e1", c.ports["w1"],allow_width_mismatch=True)
+        base_extension_ref_1.movex(base_thickness)
+        base_extension_ref_2 = c.add_ref(base_extension)
+        base_extension_ref_2.connect("e1", c.ports["e1"],allow_width_mismatch=True)
+        base_extension_ref_2.movex(-base_thickness)
+    c.info["base_length"] = c.bbox().height()
+    create_deep_etch_mask(c,method='bbox',mask_offset=mask_offset,x_off=False)
+    
     return c
+

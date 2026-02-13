@@ -1,9 +1,12 @@
+from collections.abc import Sequence
 import gdsfactory as gf
+import numpy as np
 from .utils import create_deep_etch_mask, merge_deep_etch_mask
+from .path import smooth_asymmetric
 from gdsfactory.typings import LayerSpec
 
 
-def cantilever_beam(length, width, mask_offset=1):
+def cantilever_beam(length, width, mask_offset=1, deep_etch_layer="DEEP_ETCH"):
     """Creates a cantilever beam with a deep etch mask."""
     c = gf.Component()
     c.add_polygon(
@@ -26,10 +29,9 @@ def cantilever_beam(length, width, mask_offset=1):
     )
     c.flatten()
 
-    create_deep_etch_mask(c, mask_offset)
+    create_deep_etch_mask(c, mask_offset, deep_etch_layer=deep_etch_layer)
 
     c.flatten()
-    c.show()
     c.add_port(
         name="s1",
         center=(-length, 0),
@@ -94,7 +96,10 @@ def doubly_clamped_beam_with_spring(beam_spec, spring_spec):
     spring = c << spring_spec()
     spring.connect("e1", beam.ports["w1"], allow_width_mismatch=True)
 
-    c.ports = beam.ports
+    for port in beam.ports:
+        if not port.orientation == 180:
+            c.add_ports([port])
+    c.add_ports(spring.ports.filter(orientation=180))
     merge_deep_etch_mask(c)
     return c
 
@@ -103,72 +108,181 @@ def doubly_clamped_beam_with_spring(beam_spec, spring_spec):
 def doubly_clamped_beam_with_round_support(
     width,
     length,
-    support_length,
+    support_length: float | Sequence[float],
     layer: LayerSpec = "WG",
     create_mask=False,
     mask_offset=1,
 ):
-    points = [
-        (0, 0),
-        (width + 2 * support_length, 0),
-        (width + 2 * support_length, support_length),
-        (width + 1 * support_length, support_length),
-        (width + 1 * support_length, length - support_length),
-        (width + 2 * support_length, length - support_length),
-        (width + 2 * support_length, length),
-        (0, length),
-        (0, length - support_length),
-        (support_length, length - support_length),
-        (support_length, support_length),
-        (0, support_length),
+    def transition_support(w1: float, w2: float, height: float, npoints: int = 10) -> gf.Component:
+        # Calculations based on your requirements
+        r1 = (w1 - w2) / 2
+        r2 = height
+        
+        # Right side waypoints: Bottom-Right -> Corner -> Top-Right
+        # We add a small vertical stem at the bottom and horizontal stem at the top 
+        # to ensure the spline has 'room' to breathe if needed.
+        right_waypoints = [
+            (w1 / 2, 0),
+            (w2 / 2, 0),
+            (w2 / 2, height)
+        ]
+        
+        # Generate right profile
+        right_side = smooth_asymmetric(right_waypoints, r1=r1, r2=r2, npoints=npoints)
+        
+        # Mirror for left profile
+        left_points = right_side.points.copy()
+        left_points[:, 0] *= -1  # Flip X coordinates
+        
+        polygon_points = np.vstack([left_points, right_side.points[::-1]])
+        c = gf.Component()
+        c.add_polygon(polygon_points,'WG')
+        c.add_port(name='W1', center=(0, 0), width=w1, orientation=-90,layer='WG',port_type='placement')
+        c.add_port(name='W2', center=(0, height), width=w2, orientation=90,layer='WG',port_type='placement')
+        return c
+    
+    if isinstance(support_length, (int, float)):
+        support = transition_support(support_length, width, support_length)
+    elif isinstance(support_length, Sequence) and len(support_length) == 2:
+        support = transition_support(
+            support_length[0], width, support_length[1]
+        )
+    else:
+        raise ValueError("support_length must be a float or a sequence of two floats.")
+    
+    c = gf.Component()
+    beam_pts = [
+        (0, -width / 2),
+        (length, -width / 2),
+        (length, width / 2),
+        (0, width / 2),
     ]
-    c = gf.Component()
-    c.add_polygon(points, layer=layer)
-    layer_tuple = gf.get_layer_tuple(layer)
-    circle = gf.components.circle(
-        radius=support_length, layer=(layer_tuple[0], layer_tuple[1] + 1)
-    )
-    c1, c2, c3, c4 = (c.add_ref(circle) for _ in range(4))
-    c1.move((0, support_length))
-    c2.move((width + 2 * support_length, support_length))
-    c3.move((0, length - support_length))
-    c4.move((width + 2 * support_length, length - support_length))
-
-    beam_round = gf.boolean(
-        c, c, "not", layer, layer, (layer_tuple[0], layer_tuple[1] + 1)
-    )
-    c = gf.Component()
-    c.add_ref(beam_round)
+    c.add_polygon(beam_pts, layer=layer)
+    transition_support_l = c << support
+    transition_support_l.connect("W2", gf.Port(name="p1", center=(0, 0), width=width, orientation=180,layer=gf.get_layer(layer),port_type='placement'))
+    
+    transition_support_r = c << support
+    transition_support_r.connect("W2", gf.Port(name="p1", center=(length, 0), width=width, orientation=0,layer=gf.get_layer(layer),port_type='placement'))
+    
     c.add_port(
-        "w1",
-        center=(width / 2 + support_length, length),
-        port_type="placement",
-        width=width,
-        orientation=90,
-        layer=layer,
+        name='w1',
+        port=transition_support_l.ports['W1']
     )
     c.add_port(
-        "e1",
-        center=(width / 2 + support_length, 0),
-        port_type="placement",
+        name='e1',
+        port=transition_support_r.ports['W1']
+    )
+    c.add_port(
+        name='s1',
+        center=(length / 2, -width / 2),
         width=width,
         orientation=270,
-        layer=layer,
-    )
+        layer=gf.get_layer(layer),
+        port_type='placement'
+    )    
     c.add_port(
-        "s1",
-        center=(support_length, length / 2),
-        port_type="placement",
-        width=1,
-        orientation=180,
-        layer=layer,
+        name='n1',
+        center=(length / 2, width / 2),
+        width=width,
+        orientation=90,
+        layer=gf.get_layer(layer),
+        port_type='placement'
     )
 
     if create_mask:
-        create_deep_etch_mask(c, method="bbox", mask_offset=mask_offset, y_off=False)
-    c.rotate(90)
+        create_deep_etch_mask(c, method="bbox", mask_offset=mask_offset)
     return c
+@gf.cell
+def cantilever_beam_with_round_support(
+    width,
+    length,
+    support_length: float | Sequence[float],
+    layer: LayerSpec = "WG",
+    create_mask=False,
+    mask_offset=1,
+    deep_etch_layer = "DEEP_ETCH",
+):
+    """Creates a cantilever beam with round support on one side (fixed end)."""
+    def transition_support(w1: float, w2: float, height: float, npoints: int = 10) -> gf.Component:
+        # Calculations based on your requirements
+        r1 = (w1 - w2) / 2
+        r2 = height
+        
+        # Right side waypoints: Bottom-Right -> Corner -> Top-Right
+        right_waypoints = [
+            (w1 / 2, 0),
+            (w2 / 2, 0),
+            (w2 / 2, height)
+        ]
+        
+        # Generate right profile
+        right_side = smooth_asymmetric(right_waypoints, r1=r1, r2=r2, npoints=npoints)
+        
+        # Mirror for left profile
+        left_points = right_side.points.copy()
+        left_points[:, 0] *= -1  # Flip X coordinates
+        
+        polygon_points = np.vstack([left_points, right_side.points[::-1]])
+        c = gf.Component()
+        c.add_polygon(polygon_points,'WG')
+        c.add_port(name='W1', center=(0, 0), width=w1, orientation=-90,layer='WG',port_type='placement')
+        c.add_port(name='W2', center=(0, height), width=w2, orientation=90,layer='WG',port_type='placement')
+        return c
+    
+    if isinstance(support_length, (int, float)):
+        support = transition_support(support_length, width, support_length)
+    elif isinstance(support_length, Sequence) and len(support_length) == 2:
+        support = transition_support(
+            support_length[0], width, support_length[1]
+        )
+    else:
+        raise ValueError("support_length must be a float or a sequence of two floats.")
+    
+    c = gf.Component()
+    beam_pts = [
+        (0, -width / 2),
+        (length, -width / 2),
+        (length, width / 2),
+        (0, width / 2),
+    ]
+    c.add_polygon(beam_pts, layer=layer)
+    
+    # Only add support on the left side (fixed end)
+    transition_support_l = c << support
+    transition_support_l.connect("W2", gf.Port(name="p1", center=(0, 0), width=width, orientation=180,layer=gf.get_layer(layer),port_type='placement'))
+    
+    c.add_port(
+        name='w1',
+        port=transition_support_l.ports['W1']
+    )
+    c.add_port(
+        name='e1',
+        center=(length, 0),
+        width=width,
+        orientation=0,
+        layer=gf.get_layer(layer),
+        port_type='placement'
+    )
+    c.add_port(
+        name='s1',
+        center=(length / 2, -width / 2),
+        width=width,
+        orientation=270,
+        layer=gf.get_layer(layer),
+        port_type='placement'
+    )    
+    c.add_port(
+        name='n1',
+        center=(length / 2, width / 2),
+        width=width,
+        orientation=90,
+        layer=gf.get_layer(layer),
+        port_type='placement'
+    )
 
+    if create_mask:
+        create_deep_etch_mask(c, method="bbox", mask_offset=mask_offset, deep_etch_layer=deep_etch_layer)
+    return c
 
 if __name__ == "__main__":
     c = cantilever_beam(length=10, width=0.1, mask_offset=0.5)

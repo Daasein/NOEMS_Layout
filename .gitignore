@@ -26,8 +26,10 @@ venv/
 Thumbs.db
 
 # Exclude test notebook
-test.ipynb
+test*.ipynb
 
 # Exclude gds_files folder
 **/gds_files/
 build/
+
+layout/gds_output/
