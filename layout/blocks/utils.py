@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Callable, Literal, Union
 import gdsfactory as gf
 
 
@@ -128,3 +128,87 @@ def merge_layers_with_priority(
             c_out.add_polygon(reg, layer=lt)
     c_out.ports = component.ports
     return c_out
+
+def labelme(
+    c: gf.Component,
+    c_tolabel: gf.ComponentReference,
+    text: str,
+    *,
+    text_spec=gf.components.text_freetype,
+    position: Union[str, Callable[[gf.ComponentReference], tuple[float, float]], tuple[float, float]] = "center",
+    anchor: Literal["SW", "SE", "NW", "NE", "center"] = "center",
+) -> gf.ComponentReference:
+    """
+    Add a text label to a component with flexible position definition.
+    
+    Args:
+        c: The Component where the final label will exist
+        c_tolabel: ComponentReference within c that is used to calculate the label position
+        text: Text content
+        text_spec: Text component specification (function or component), default is text_freetype
+        position: Text position, can be:
+            - String: "SW", "SE", "NW", "NE", "center" representing relative positions to c_tolabel
+            - Callable: Function receiving (c_tolabel, text_ref), returns (x, y) coordinates
+            - Tuple: (x, y) absolute coordinates
+        anchor: Reference point of text (for move origin), determines the base point when moving text
+            - "SW": Bottom-left corner
+            - "SE": Bottom-right corner
+            - "NW": Top-left corner
+            - "NE": Top-right corner
+            - "center": Center (default)
+    
+    Returns:
+        ComponentReference: The created and moved text reference in component c
+        
+    Example:
+        # Create component and add rectangle, then label it
+        c = gf.Component()
+        rect = c << gf.components.rectangle(size=(100, 50))
+        
+        # Use string position to center text on rect
+        label1 = labelme(c, rect, "test", position="center", anchor="center")
+        
+        # Use callable to dynamically calculate position (top-right of rect)
+        def get_label_pos(comp_ref, text_ref):
+            return (comp_ref.xmax + 20, comp_ref.ymax)
+        
+        label2 = labelme(c, rect, "label", position=get_label_pos, anchor="SW")
+        
+        # Use absolute coordinates
+        label3 = labelme(c, rect, "abs", position=(100, 100), anchor="center")
+    """
+    # Create and add text component to c
+    text_ref = c << text_spec(text=text)
+    
+    # Determine anchor point coordinates (text's reference point)
+    anchor_map = {
+        "SW": (text_ref.xmin, text_ref.ymin),
+        "SE": (text_ref.xmax, text_ref.ymin),
+        "NW": (text_ref.xmin, text_ref.ymax),
+        "NE": (text_ref.xmax, text_ref.ymax),
+        "center": text_ref.center,
+    }
+    anchor_point = anchor_map[anchor]
+    
+    # Calculate destination position
+    if callable(position):
+        # If position is callable, pass c_tolabel and text_ref to get coordinates
+        destination = position(c_tolabel)
+    elif isinstance(position, str):
+        # If position is string, generate coordinates from c_tolabel's corners or center
+        c_anchor_map = {
+            "SW": (c_tolabel.xmin, c_tolabel.ymin),
+            "SE": (c_tolabel.xmax, c_tolabel.ymin),
+            "NW": (c_tolabel.xmin, c_tolabel.ymax),
+            "NE": (c_tolabel.xmax, c_tolabel.ymax),
+            "center": c_tolabel.center,
+        }
+        destination = c_anchor_map[position]
+    else:
+        # Otherwise assume it's a coordinate tuple
+        destination = position
+    
+    # Move text using move (origin is reference point, destination is target point)
+    text_ref.move(origin=anchor_point, destination=destination)
+    
+    return text_ref
