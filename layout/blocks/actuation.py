@@ -110,7 +110,7 @@ def combdrive_fingers(
         base_extension_ref_2.connect("e1", c.ports["e1"],allow_width_mismatch=True)
         base_extension_ref_2.movex(-base_thickness)
     c.info["base_length"] = c.bbox().height()
-    create_deep_etch_mask(c,method='bbox',mask_offset=mask_offset,x_off=False)
+    create_deep_etch_mask(c,method='bbox',mask_offset=mask_offset)
     
     return c
 

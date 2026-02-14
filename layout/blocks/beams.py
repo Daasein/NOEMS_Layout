@@ -104,7 +104,7 @@ def doubly_clamped_beam_with_spring(beam_spec, spring_spec):
     return c
 
 
-@gf.cell
+# @gf.cell
 def doubly_clamped_beam_with_round_support(
     width,
     length,

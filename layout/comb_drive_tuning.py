@@ -744,13 +744,13 @@ def cantilever_pullin_test(width, length, gap, overlap):
     beam1.connect('s1', beam2.ports['s1'])
     beam1.movey(gap+width)
     beam1.movex(length-overlap)
-    create_deep_etch_mask(c,'bbox',mask_offset=5,deep_etch_layer='DEEP_ETCH_EBL')
-    pad1 = c <<pad(size=(400, 400), metal_offset=10, create_mask=True, mask_offset=20, deep_etch_layer='DEEP_ETCH_PL')
-    pad2 = c <<pad(size=(400, 400), metal_offset=10, create_mask=True, mask_offset=20, deep_etch_layer='DEEP_ETCH_PL')
+    create_deep_etch_mask(c,'bbox',mask_offset=10,deep_etch_layer='DEEP_ETCH_EBL')
+    pad1 = c <<pad(size=(400, 400), metal_offset=10, create_mask=True, mask_offset=10, deep_etch_layer='DEEP_ETCH_PL')
+    pad2 = c <<pad(size=(400, 400), metal_offset=10, create_mask=True, mask_offset=10, deep_etch_layer='DEEP_ETCH_PL')
     pad1.connect('E1', beam1.ports['w1'].copy(gf.kdb.Trans(x=10*1000)), allow_width_mismatch=True, allow_type_mismatch=True)
     pad2.connect('E1', beam2.ports['w1'].copy(gf.kdb.Trans(x=-10*1000)), allow_width_mismatch=True, allow_type_mismatch=True)
     p={'WG':3,'PADDING':2,'DEEP_ETCH_EBL':1,'DEEP_ETCH_PL':1}
-    c = EBL_PL_overlap(c, overlap=1, EBL_layer='DEEP_ETCH_EBL', PL_layer='DEEP_ETCH_PL')
+    c = EBL_PL_overlap(c, overlap=5, EBL_layer='DEEP_ETCH_EBL', PL_layer='DEEP_ETCH_PL')
     c = merge_layers_with_priority(c,p)
     return c
 
@@ -769,13 +769,13 @@ def EBL_PL_overlap(c:gf.Component, overlap:float=3, EBL_layer="DEEP_ETCH", PL_la
 
 @gf.cell
 def cantilever_pullin_array():
-    length_list = [200, 500]
-    overlap_list = [50, 150]
+    length_list = [15, 30]
+    overlap_list = [10, 15]
     thick_list = np.array([100, 300]) * 1e-3
 
     # Generate all combinations of the parameters
     param_combinations = list(itertools.product( overlap_list, thick_list,length_list,))
-    gap = 2
+    gap = 1
     c = gf.Component()
 
     text_spec = partial(gf.components.text_freetype, font="Arial", size=50, layer="MTOP")
@@ -786,5 +786,5 @@ def cantilever_pullin_array():
         inst.movey(row * 600)
         inst.movex(col * 1500)
         
-        labelme(c, inst, f"overlap={overlap}, t={t*1e3}um, l={l}um", position=lambda c_ref: (c_ref.xmin, c_ref.ymin-20), anchor="NW", text_spec=text_spec)
+        labelme(c, inst, f"overlap={overlap}um, t={t*1e3}nm, l={l}nm", position=lambda c_ref: (c_ref.xmin, c_ref.ymin-20), anchor="NW", text_spec=text_spec)
     return c
