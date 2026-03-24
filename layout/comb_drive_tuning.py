@@ -689,7 +689,11 @@ def combdrive_array(finger_spec, movable_base_width, fixed_base_width, mask_offs
     
     c.add_port(name='m', port=movable_base_ref.ports['e2'])
     c.add_port(name='f', port=fixed_base_ref.ports['e2'])
+    
+    c.info['total_height'] = c.ysize
+    
     create_deep_etch_mask(c, 'bbox', deep_etch_layer='DEEP_ETCH_PL', mask_offset=mask_offset)
+    
     
     return c
 
