@@ -53,7 +53,7 @@ def spring_with_truss(anchor_size=5, spring_length=20, spring_width=0.15):
 
 
 @gf.cell
-def spring_anchor_outside(spring_width=0.16, spring_length=20, spring_separation=3, open: Literal[list['left', 'right']]=['left']):
+def spring_anchor_outside(spring_width=0.16, spring_length=20, spring_separation=3, metal_offset=1,open: Literal[list['left', 'right']]=['left']):
     c = gf.Component()
     def flying_bar(truss_number, spring_width, spring_separation):
         c = gf.Component()
@@ -161,11 +161,12 @@ def spring_anchor_outside(spring_width=0.16, spring_length=20, spring_separation
     anchor_2_ref.movex(- anchor_width)
     anchor_2_ref.movey(-anchor_width*1.5)
     
-    metal_width = 2*anchor_width-2
-    metal = gf.components.rectangle(size=(metal_width,anchor_width-1), layer='MTOP')
-    metal_ref = c << metal
-    metal_ref.movex(- metal_width/2)
-    metal_ref.movey(-anchor_width*1.5)
+    metal_width = 2*anchor_width-2*metal_offset
+    if metal_width>0:
+        metal = gf.components.rectangle(size=(metal_width,anchor_width-metal_offset), layer='MTOP')
+        metal_ref = c << metal
+        metal_ref.movex(- metal_width/2)
+        metal_ref.movey(-anchor_width*1.5)
     
     c_new = gf.Component()
     top_y, btm_y = c.bbox().top, c.bbox().bottom
@@ -239,10 +240,11 @@ def spring_pair_anchor_outside(
     spring_separation=3,
     mask_offset=1,
     if_create_mask=True,
+    metal_offset=1,
     open: Literal[list['left', 'right']]=['left']
 ):
     c = gf.Component()
-    spring = spring_anchor_outside(spring_width, spring_length, spring_separation, open=open)
+    spring = spring_anchor_outside(spring_width, spring_length, spring_separation, open=open, metal_offset=metal_offset)
     down_spring = c << spring
     up_spring = c << spring
     truss_connection = c << truss_v2(0.16, 1, (4,spring.info['frame_width']), open=(['top','bottom'] + open))

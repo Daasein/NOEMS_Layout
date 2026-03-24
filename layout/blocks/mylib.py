@@ -268,14 +268,14 @@ def text_outline(
     with_mask=True,
 ):
     c = gf.Component()
-    t = gf.components.text(text=text, size=size - 1, layer=layer)
+    t = gf.components.text_freetype(text=text, size=size - 1, layer=layer, font=font)
     c2 = gf.Component()
     for p in t.get_polygons()[gf.get_layer(layer)]:
         c2.add_polygon(p.sized(outline_width * 1000), layer=layer)
     c << gf.boolean(c2, t, "not", layer=layer)
     if with_mask:
-        bbox = gf.kdb.Region(c.bbox())
-        c.add_polygon(bbox.sized(4000), layer=mask_layer)
+        bbox = gf.kdb.DPolygon(c.bbox())
+        c.add_polygon(bbox.sized(4), layer=mask_layer)
     return c
 
 

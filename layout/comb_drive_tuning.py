@@ -1,3 +1,4 @@
+import itertools
 import gdsfactory as gf
 from blocks import *
 
@@ -20,6 +21,7 @@ class NEOMS_LayerMap(LayerMap):
     MTOP: Layer = (12, 24)
     PADDING: Layer = (67,0)
     SLAB150: Layer = (2, 0)
+    SLAB90: Layer = (3, 0)
     FLOORPLAN: Layer = getattr(generic_pdk.layers, "FLOORPLAN")
     MARKER: Layer = (66, 0)
 pdk1 = gf.Pdk(
@@ -176,7 +178,7 @@ def finger_hard_support_L(size,mask_offset=5, metal_offset=2, metal_layer='MTOP'
         )
     return c
 @gf.cell
-def pad(size, metal_offset,pad_layer='PADDING'):
+def pad(size, metal_offset,pad_layer='PADDING', create_mask=False, mask_offset=10, deep_etch_layer='DEEP_ETCH'):
     c = gf.Component()
     rect = c <<  gf.components.rectangle(size=size,layer=pad_layer)
     metal = c << gf.components.rectangle(size=(size[0]-2*metal_offset,size[1]-2*metal_offset),layer='MTOP')
@@ -198,6 +200,8 @@ def pad(size, metal_offset,pad_layer='PADDING'):
             layer="WG",
             port_type='electrical'
         )
+    if create_mask:
+        create_deep_etch_mask(c,'bbox',mask_offset=mask_offset, deep_etch_layer=deep_etch_layer)
     return c
 
 @gf.cell
@@ -217,14 +221,14 @@ def U_shape_pad(p1_size=(100, 800), p2_size=(200, 100), p3_size=(100, 400), meta
     return c
 
 @gf.cell
-def beam_fixed_support(size,mask_offset=5, metal_offset=2, metal_layer='MTOP'):
+def beam_fixed_support(size,mask_offset=5, metal_offset=2, metal_layer='MTOP', deep_etch_layer='DEEP_ETCH'):
     c = gf.Component()
     rect = gf.components.rectangle(size=size,layer="WG")
     c << rect
     metal_rect = gf.components.rectangle(size=(size[0]-2*metal_offset, size[1]-2*metal_offset),layer=metal_layer)
     metal_rect_ref = c << metal_rect
     metal_rect_ref.move((metal_offset,metal_offset))
-    create_deep_etch_mask(c,'bbox',mask_offset=mask_offset, deep_etch_layer='DEEP_ETCH')
+    create_deep_etch_mask(c,'bbox',mask_offset=mask_offset, deep_etch_layer=deep_etch_layer)
     for port in rect.ports:
         if port.orientation == 0:
             name = "E1"
@@ -373,10 +377,10 @@ def litho_calipers(alignment_type:Literal['EBL','PL']= 'EBL', row_spacing=0, lay
     layer_tuple1 = gf.get_layer_tuple(layer1)
     layer_tuple2 = gf.get_layer_tuple(layer2)
 
-    main_label = c << text_outline(text=f"{layer_tuple1} M",size=10,layer=layer1,outline_width=1,with_mask=False)
+    main_label = c << text_outline(text=f"{layer_tuple1} M",size=10,layer=layer1,outline_width=0.5,with_mask=False)
     main_label.move(origin=(main_label.xmin, main_label.ymin), destination=(num_notches*2*(notch_spacing+notch_size[0]) + 5,0))
     
-    vernier_label = c << text_outline(text=f"{layer_tuple2} V",size=10,layer=layer2,outline_width=1,with_mask=False)
+    vernier_label = c << text_outline(text=f"{layer_tuple2} V",size=10,layer=layer2,outline_width=0.5,with_mask=False)
     vernier_label.move(origin=(vernier_label.xmin, vernier_label.ymax), destination=(num_notches*2*(notch_spacing+notch_size[0]) + 5,0))
     c2 = gf.Component()
     horizontal = c2 << c
@@ -685,10 +689,15 @@ def combdrive_array(finger_spec, movable_base_width, fixed_base_width, mask_offs
     
     c.add_port(name='m', port=movable_base_ref.ports['e2'])
     c.add_port(name='f', port=fixed_base_ref.ports['e2'])
+    
+    c.info['total_height'] = c.ysize
+    
     create_deep_etch_mask(c, 'bbox', deep_etch_layer='DEEP_ETCH_PL', mask_offset=mask_offset)
+    
     
     return c
 
+@gf.cell
 def folded_spring_5um(length, width, separation, anchor_size, flying_bar_height, shaft_hole_size, shaft_margin, mask_offset=2):
     Point = gf.kdb.Point
     Trans = gf.kdb.Trans    
@@ -724,6 +733,62 @@ def folded_spring_5um(length, width, separation, anchor_size, flying_bar_height,
         anchor_2.ports['e2']
     ])
     c_out.auto_rename_ports()
-    create_deep_etch_mask(c_out, 'bbox', mask_offset=mask_offset)
+    c_out.info['total_width'] = c_out.xsize
+
+    create_deep_etch_mask(c_out, 'bbox', mask_offset=mask_offset,deep_etch_layer='DEEP_ETCH_PL')
+    
     
     return c_out
+
+@gf.cell
+def cantilever_pullin_test(width, length, gap, overlap):
+    c = gf.Component()
+    beam1 = c << cantilever_beam_with_round_support(width=width, length=length, support_length=0.2,deep_etch_layer='DEEP_ETCH_EBL')
+    beam2 = c << cantilever_beam_with_round_support(width=width, length=length, support_length=.2,deep_etch_layer='DEEP_ETCH_EBL')
+    beam1.connect('s1', beam2.ports['s1'])
+    beam1.movey(gap+width)
+    beam1.movex(length-overlap)
+    create_deep_etch_mask(c,'bbox',mask_offset=10,deep_etch_layer='DEEP_ETCH_EBL')
+    pad1 = c <<pad(size=(400, 400), metal_offset=10, create_mask=True, mask_offset=10, deep_etch_layer='DEEP_ETCH_PL')
+    pad2 = c <<pad(size=(400, 400), metal_offset=10, create_mask=True, mask_offset=10, deep_etch_layer='DEEP_ETCH_PL')
+    pad1.connect('E1', beam1.ports['w1'].copy(gf.kdb.Trans(x=10*1000)), allow_width_mismatch=True, allow_type_mismatch=True)
+    pad2.connect('E1', beam2.ports['w1'].copy(gf.kdb.Trans(x=-10*1000)), allow_width_mismatch=True, allow_type_mismatch=True)
+    p={'WG':3,'PADDING':2,'DEEP_ETCH_EBL':1,'DEEP_ETCH_PL':1}
+    c = EBL_PL_overlap(c, overlap=5, EBL_layer='DEEP_ETCH_EBL', PL_layer='DEEP_ETCH_PL')
+    c = merge_layers_with_priority(c,p)
+    return c
+
+def EBL_PL_overlap(c:gf.Component, overlap:float=3, EBL_layer="DEEP_ETCH", PL_layer = "DEEP_ETCH_PL") -> gf.Component:
+    c_out = gf.Component()
+    EBL_reg = c.get_region(EBL_layer,merge=True)
+    EBL_reg.insert(c.get_region('WG',merge=True))
+    PL_reg = c.get_region(PL_layer)
+    EBL_sized = EBL_reg.sized(-overlap*1000,2)
+    
+    c_out.add_polygon(PL_reg-EBL_sized, PL_layer)
+    c_out.add_ref(c.extract(layers=[l for l in c.layers if gf.get_layer(l) != gf.get_layer(PL_layer)]))
+    
+    c_out.ports = c.ports
+    return c_out
+
+@gf.cell
+def cantilever_pullin_array():
+    length_list = [15, 30]
+    overlap_list = [10, 15]
+    thick_list = np.array([100, 300]) * 1e-3
+
+    # Generate all combinations of the parameters
+    param_combinations = list(itertools.product( overlap_list, thick_list,length_list,))
+    gap = 1
+    c = gf.Component()
+
+    text_spec = partial(gf.components.text_freetype, font="Arial", size=50, layer="MTOP")
+    for i, (overlap,t, l) in enumerate(param_combinations):
+        inst = c << cantilever_pullin_test(width=t, length=l, gap=gap, overlap=overlap)
+        row = i // 2
+        col = i % 2
+        inst.movey(row * 600)
+        inst.movex(col * 1500)
+        
+        labelme(c, inst, f"overlap={overlap}um, t={t*1e3}nm, l={l}nm", position=lambda c_ref: (c_ref.xmin, c_ref.ymin-20), anchor="NW", text_spec=text_spec)
+    return c
